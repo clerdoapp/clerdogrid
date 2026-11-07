@@ -9,6 +9,7 @@ import { XML_HEAD, el, esc, escXstr } from './xml';
 import { StyleWriter, argb, fontXml } from './xlsx-styles';
 import { DRAWING_HEAD, anchorXml, chartFrameXml, chartXml, fileColWidth, pictureXml } from './xlsx-chart';
 import { addFuturePrefixes, quoteSheet } from './formula-xml';
+import { OBJECTS_CT, OBJECTS_PATH, OBJECTS_REL, legacyNotes, objectsPart, protectedRangesXml, shapeXml, withDescr } from './xlsx-objects';
 
 const NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -274,6 +275,7 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
     const opts: Record<string, boolean> = { ...s.protection.options };
     x += el('sheetProtection', { password: s.protection.password, sheet: true, ...opts });
   }
+  x += protectedRangesXml(s);
   if (s.autoFilter) {
     const af = s.autoFilter;
     const cols = af.columns.map((c) => {
@@ -324,8 +326,8 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
     x += el('pageSetup', { paperSize: ps.paper, fitToWidth: fit ? ps.fitWidth ?? 1 : undefined, fitToHeight: fit ? ps.fitHeight ?? 1 : undefined, orientation: ps.orientation });
   }
 
-  // drawings (charts + pictures)
-  if (s.charts.length || s.pictures.length) {
+  // drawings (charts, pictures and shapes share one drawing part)
+  if (s.charts.length || s.pictures.length || s.shapes?.length) {
     const dn = ++o.counters.drawing;
     const dPath = `xl/drawings/drawing${dn}.xml`;
     const dRels = new Rels();
@@ -335,7 +337,7 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
       const cn = ++o.counters.chart;
       put(o, `xl/charts/chart${cn}.xml`, chartXml(c), CT + 'drawingml.chart+xml');
       const rid = dRels.add('chart', `../charts/chart${cn}.xml`);
-      body += anchorXml(c.anchor, s, chartFrameXml(++shapeId, c.title ?? `Chart ${shapeId - 1}`, rid));
+      body += anchorXml(c.anchor, s, withDescr(chartFrameXml(++shapeId, c.title ?? `Chart ${shapeId - 1}`, rid), c.alt));
     }
     for (const p of s.pictures) {
       const ext = IMG_EXT[p.mime] ?? 'png';
@@ -343,16 +345,18 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
       o.files[`xl/media/image${n}.${ext}`] = p.data;
       o.defaults.set(ext, p.mime);
       const rid = dRels.add('image', `../media/image${n}.${ext}`);
-      body += anchorXml(p.anchor, s, pictureXml(++shapeId, `Picture ${n}`, rid, p.anchor));
+      body += anchorXml(p.anchor, s, withDescr(pictureXml(++shapeId, `Picture ${n}`, rid, p.anchor), p.alt));
     }
+    for (const sh of s.shapes ?? []) body += anchorXml(sh.anchor, s, shapeXml(++shapeId, sh));
     put(o, dPath, `${XML_HEAD}${DRAWING_HEAD}${body}</xdr:wsDr>`, CT + 'drawing+xml');
     put(o, `xl/drawings/_rels/drawing${dn}.xml.rels`, dRels.xml());
     x += `<drawing r:id="${rels.add('drawing', `../drawings/drawing${dn}.xml`)}"/>`;
   }
-  if (s.notes.size) {
+  const notes = legacyNotes(s);
+  if (notes.size) {
     const n = ++o.counters.comments;
-    put(o, `xl/comments${n}.xml`, commentsXml(s.notes), CT + 'spreadsheetml.comments+xml');
-    o.files[`xl/drawings/vmlDrawing${n}.vml`] = enc.encode(vmlXml(s.notes, n));
+    put(o, `xl/comments${n}.xml`, commentsXml(notes), CT + 'spreadsheetml.comments+xml');
+    o.files[`xl/drawings/vmlDrawing${n}.vml`] = enc.encode(vmlXml(notes, n));
     o.defaults.set('vml', CT + 'vmlDrawing');
     rels.add('comments', `../comments${n}.xml`);
     x += `<legacyDrawing r:id="${rels.add('vmlDrawing', `../drawings/vmlDrawing${n}.vml`)}"/>`;
@@ -374,6 +378,9 @@ const METADATA = `${XML_HEAD}<metadata xmlns="${NS_MAIN}" xmlns:xda="http://sche
   + '<metadataTypes count="1"><metadataType name="XLDAPR" minSupportedVersion="120000" copy="1" pasteAll="1" pasteValues="1" merge="1" splitFirst="1" rowColShift="1" clearFormats="1" clearComments="1" assign="1" coerce="1" cellMeta="1"/></metadataTypes>'
   + '<futureMetadata name="XLDAPR" count="1"><bk><extLst><ext uri="{bdbb8cdc-fa1e-496e-a857-3c3f30c029c3}"><xda:dynamicArrayProperties fDynamic="1" fCollapsed="0"/></ext></extLst></bk></futureMetadata>'
   + '<cellMetadata count="1"><bk><rc t="1" v="0"/></bk></cellMetadata></metadata>';
+
+const NS_SCRIPTS = 'http://schemas.clerdo.app/grid/2026/scripts';
+const RT_SCRIPTS = 'http://schemas.clerdo.app/grid/2026/relationships/scripts';
 
 export const writeXlsx = (wb: Workbook): Uint8Array => {
   const o: Out = {
@@ -419,6 +426,11 @@ export const writeXlsx = (wb: Workbook): Uint8Array => {
   wbRels.add('styles', 'styles.xml');
   put(o, 'xl/theme/theme1.xml', THEME, CT + 'theme+xml');
   wbRels.add('theme', 'theme/theme1.xml');
+  const objects = objectsPart(wb);
+  if (objects) {
+    put(o, OBJECTS_PATH, objects, OBJECTS_CT);
+    wbRels.add(OBJECTS_REL, OBJECTS_PATH.replace(/^xl\//, ''));
+  }
   if (o.sst.items.length) {
     put(o, 'xl/sharedStrings.xml', o.sst.xml(), CT + 'spreadsheetml.sharedStrings+xml');
     wbRels.add('sharedStrings', 'sharedStrings.xml');
@@ -426,6 +438,12 @@ export const writeXlsx = (wb: Workbook): Uint8Array => {
   if (o.usesDynamic) {
     put(o, 'xl/metadata.xml', METADATA, CT + 'spreadsheetml.sheetMetadata+xml');
     wbRels.add('sheetMetadata', 'metadata.xml');
+  }
+
+  if (wb.scripts?.length) {
+    const items = wb.scripts.map((sc) => el('script', { id: sc.id, name: sc.name }, esc(sc.code))).join('');
+    put(o, 'xl/clerdo/scripts.xml', `${XML_HEAD}<scripts xmlns="${NS_SCRIPTS}">${items}</scripts>`, 'application/vnd.clerdo.grid.scripts+xml');
+    wbRels.add(RT_SCRIPTS, 'clerdo/scripts.xml');
   }
 
   // parts kept from the file this workbook was read from

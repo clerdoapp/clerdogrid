@@ -17,7 +17,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "electron:compile": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
-    "dist": "npm run build && npm run electron:compile && electron-builder --publish never"
+    "dist": "npm run build && npm run electron:compile && electron-builder --publish never",
+    "examples": "vite-node scripts/examples.ts",
+    "docs:functions": "vite-node scripts/functions-doc.ts"
   },
   "dependencies": {
     "@fontsource/arimo": "^5.0.0",
@@ -33,13 +35,16 @@
     "@fontsource/roboto": "^5.3.0",
     "@fontsource/roboto-mono": "^5.3.0",
     "@fontsource/tinos": "^5.0.0",
+    "dictionary-en": "^4.0.0",
     "fflate": "^0.8.2",
     "lucide-react": "^0.460.0",
+    "nspell": "^2.1.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
+    "@types/nspell": "^2.1.6",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
     "@vitejs/plugin-react": "^4.3.0",
@@ -63,34 +68,104 @@
       "package.json"
     ],
     "fileAssociations": [
-      { "ext": "xlsx", "name": "Workbook", "role": "Editor", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
-      { "ext": "xlsm", "name": "Workbook", "role": "Editor", "mimeType": "application/vnd.ms-excel.sheet.macroEnabled.12" },
-      { "ext": "xltx", "name": "Workbook template", "role": "Editor", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.template" },
-      { "ext": "csv", "name": "Comma-separated values", "role": "Editor", "mimeType": "text/csv" },
-      { "ext": "tsv", "name": "Tab-separated values", "role": "Editor", "mimeType": "text/tab-separated-values" }
+      {
+        "ext": "xlsx",
+        "name": "Workbook",
+        "role": "Editor",
+        "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      },
+      {
+        "ext": "xlsm",
+        "name": "Workbook",
+        "role": "Editor",
+        "mimeType": "application/vnd.ms-excel.sheet.macroEnabled.12"
+      },
+      {
+        "ext": "xltx",
+        "name": "Workbook template",
+        "role": "Editor",
+        "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.template"
+      },
+      {
+        "ext": "csv",
+        "name": "Comma-separated values",
+        "role": "Editor",
+        "mimeType": "text/csv"
+      },
+      {
+        "ext": "tsv",
+        "name": "Tab-separated values",
+        "role": "Editor",
+        "mimeType": "text/tab-separated-values"
+      }
     ],
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["universal"] },
-        { "target": "zip", "arch": ["universal"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
       ],
       "category": "public.app-category.productivity",
       "icon": "assets/app-icon/clerdogrid.icns"
     },
     "win": {
       "target": [
-        { "target": "msi", "arch": ["x64"] },
-        { "target": "portable", "arch": ["x64"] },
-        { "target": "zip", "arch": ["x64"] }
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "assets/app-icon/clerdogrid.ico"
     },
     "linux": {
       "target": [
-        { "target": "AppImage", "arch": ["x64"] },
-        { "target": "deb", "arch": ["x64"] },
-        { "target": "rpm", "arch": ["x64"] },
-        { "target": "tar.gz", "arch": ["x64"] }
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "category": "Office",
       "maintainer": "Clerdo",
@@ -106,8 +181,12 @@
       }
     },
     "artifactName": "clerdogrid-${version}-${os}-${arch}.${ext}",
-    "deb": { "artifactName": "clerdogrid-${version}-linux-amd64.deb" },
-    "rpm": { "artifactName": "clerdogrid-${version}-linux-x86_64.rpm" },
+    "deb": {
+      "artifactName": "clerdogrid-${version}-linux-amd64.deb"
+    },
+    "rpm": {
+      "artifactName": "clerdogrid-${version}-linux-x86_64.rpm"
+    },
     "publish": []
   },
   "homepage": "https://clerdo.app",

@@ -1,4 +1,4 @@
-// Excel number formatting (ECMA-376 Part 1, 18.8.31 numFmts) with Excel's display rules.
+// spreadsheet number formatting (ECMA-376 Part 1, 18.8.31 numFmts) with spreadsheet's display rules.
 import { isError, type Scalar } from '../engine/types';
 import { fromSerial, weekdayOf } from '../engine/date';
 
@@ -255,7 +255,7 @@ const expStr = (e: number, minDigits = 2): string => 'E' + (e < 0 ? '-' : '+') +
 
 const sigCount = (s: string): number => s.replace(/E.*$/, '').replace(/[^0-9]/g, '').replace(/^0+/, '').length;
 
-/** Excel's General format for a number in a column `width` characters wide (11 in a standard column). */
+/** spreadsheet's General format for a number in a column `width` characters wide (11 in a standard column). */
 export const formatGeneral = (n: number, cellWidth = 11): string => {
   let width = cellWidth;
   if (n === 0) return '0';
@@ -649,7 +649,7 @@ const done = (o: Out, color: string | undefined, align: 'left' | 'right'): Forma
 
 // ---------------------------------------------------------------- typed-entry formats
 
-/** The format Excel gives a cell when this text is typed into it (undefined: stays General). */
+/** The format Spreadsheets give a cell when this text is typed into it (undefined: stays General). */
 export const guessFormat = (input: string): string | undefined => {
   const s = input.trim();
   if (!s) return undefined;

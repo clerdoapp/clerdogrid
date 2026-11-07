@@ -48,6 +48,7 @@ export interface ViewState {
 export type Listener = () => void;
 
 const clampPos = (p: Pos): Pos => ({ row: Math.max(0, Math.min(MAX_ROWS - 1, p.row)), col: Math.max(0, Math.min(MAX_COLS - 1, p.col)) });
+export const editRangeKey = (sheet: string, r: CellRange): string => `${sheet}|${r.r1},${r.c1}:${r.r2},${r.c2}`;
 export const rangeOf = (a: Pos, b: Pos): CellRange => ({ r1: Math.min(a.row, b.row), c1: Math.min(a.col, b.col), r2: Math.max(a.row, b.row), c2: Math.max(a.col, b.col) });
 export const inRange = (r: CellRange, row: number, col: number): boolean => row >= r.r1 && row <= r.r2 && col >= r.c1 && col <= r.c2;
 
@@ -480,8 +481,12 @@ export class GridStore {
     }
   }
 
+  /** Allow-edit ranges unlocked with their password in this session ("Sheet|A1:B2"). */
+  unlockedRanges = new Set<string>();
+
   isLocked(row: number, col: number): boolean {
     if (!this.sheet.protection?.sheet) return false;
+    if (this.sheet.editRanges?.some((e) => inRange(e.range, row, col) && (!e.password || this.unlockedRanges.has(editRangeKey(this.sheet.name, e.range))))) return false;
     return this.style(row, col).protection?.locked !== false;
   }
 

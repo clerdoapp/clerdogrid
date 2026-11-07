@@ -1,0 +1,43 @@
+/** Reference shown next to the script editor. */
+export const API_HELP: { title: string; items: [string, string][] }[] = [
+  { title: 'Start', items: [
+    ['function main(workbook) { }', 'Every script has a main function. It gets the workbook.'],
+    ['console.log(value)', 'Prints to the output below.'],
+  ] },
+  { title: 'workbook', items: [
+    ['getActiveSheet()', 'The sheet that is showing.'],
+    ['getSheet(name)', 'A sheet by name, or null.'],
+    ['getSheets()', 'All sheets.'],
+    ['addSheet(name)', 'Adds a sheet at the end.'],
+    ['getSelectedRange()', 'The selected cells.'],
+  ] },
+  { title: 'sheet', items: [
+    ['getRange("A1:C3")', 'A block of cells. Also "A:C" or "2:5".'],
+    ['getCell(row, col)', 'One cell, counted from 0.'],
+    ['getUsedRange()', 'The block that has data, or null.'],
+    ['getName() / setName(name)', 'The sheet name.'],
+    ['freezePanes(rows, cols)', 'Keeps rows and columns in view.'],
+    ['deleteRows(index, count)', 'Removes whole rows.'],
+    ['addTable("A1:D9", name)', 'Turns a block into a table.'],
+    ['activate()', 'Shows this sheet when the script ends.'],
+  ] },
+  { title: 'range', items: [
+    ['getValues() / setValues(rows)', 'Values as rows of cells: [[1, 2], [3, 4]].'],
+    ['getFormulas() / setFormulas(rows)', 'Formulas such as "=SUM(A1:A9)", or values.'],
+    ['getValue() / setValue(v)', 'The first cell. setValue fills the whole range.'],
+    ['getAddress()', 'For example "B2:D9".'],
+    ['getRowCount() / getColumnCount()', 'Size of the range.'],
+    ['getRowIndex() / getColumnIndex()', 'Where it starts, counted from 0.'],
+    ['getCell(r, c) / getRow(i) / getColumn(i)', 'Parts of the range.'],
+    ['setBold(true) / setItalic(true)', 'Font style.'],
+    ['setFontColor("#0C7A4B")', 'Text color.'],
+    ['setFill("#E1F3E9")', 'Cell color. setFill(null) removes it.'],
+    ['setNumberFormat("0.00%")', 'How numbers show.'],
+    ['setHorizontalAlignment("center")', 'left, center, right or general.'],
+    ['autofitColumns()', 'Fits column widths to the text.'],
+    ['sort(column, ascending)', 'Sorts rows by a column (0 = first in range, or "B").'],
+    ['setRowsHidden(b) / setColumnsHidden(b)', 'Hides or shows rows or columns.'],
+    ['clear("contents" | "formats")', 'Clears cells. With no argument, clears both.'],
+    ['select()', 'Selects the range when the script ends.'],
+  ] },
+];

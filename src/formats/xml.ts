@@ -156,7 +156,7 @@ export const stripInvalid = (s: string): string => s.replace(INVALID, '');
 export const esc = (s: string): string =>
   stripInvalid(s).replace(/[&<>"]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : '&quot;'));
 
-/** Cell text for ST_Xstring: control characters become _xHHHH_ (as Excel writes them) instead of being dropped. */
+/** Cell text for ST_Xstring: control characters become _xHHHH_ (as other apps write them) instead of being dropped. */
 export const escXstr = (s: string): string =>
   esc(
     s

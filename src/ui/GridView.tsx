@@ -12,6 +12,7 @@ import { FormulaAssist } from './FormulaAssist';
 import { ChartLayer } from './ChartLayer';
 import { listOptions } from '../app/validation';
 import { filterPopupFor } from './FilterPopup';
+import { gridHooks } from './panelRegistry';
 
 const REF_COLORS = ['#2f6fdf', '#d6336c', '#0c8a50', '#9c36b5', '#e8590c', '#0c8599', '#b08800'];
 const COL_HEADER = 22;
@@ -253,6 +254,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     }
     if (h.area === 'corner') { store.selectRange({ r1: 0, c1: 0, r2: MAX_ROWS - 1, c2: MAX_COLS - 1 }, store.sel.active); return; }
     if (h.area === 'cell' && af(h)) return;
+    if (h.area === 'cell' && !store.editing && !ev.shiftKey && !ev.ctrlKey && !ev.metaKey && tapHooks(h, ev.pointerType)) return;
     if (store.editing && pointingFormula() && h.area === 'cell') {
       pointer.current = { mode: 'pickRef', start: { row: h.row, col: h.col } };
       insertRefWhileEditing({ row: h.row, col: h.col });
@@ -280,6 +282,8 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     pointer.current = { mode: 'select', start: { row: h.row, col: h.col } };
   };
 
+  const tapHooks = (h: ReturnType<typeof hit>, pointerType: string): boolean => gridHooks().some((g) => g.cellTap?.(store, { row: h.row, col: h.col, x: h.x, y: h.y, pointerType }));
+
   const touchStart = useRef<{ x: number; y: number; t: number; h: ReturnType<typeof hit> } | null>(null);
   const lastTap = useRef<{ t: number; row: number; col: number } | null>(null);
 
@@ -303,6 +307,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     lastPointer.current = { x: ev.clientX, y: ev.clientY };
     const ptr = pointer.current;
     if (!ptr) {
+      if (ev.pointerType !== 'touch') for (const g of gridHooks()) g.hover?.(store, h.area === 'cell' ? { row: h.row, col: h.col, x: h.x, y: h.y, pointerType: ev.pointerType } : null);
       // Cursor feedback.
       const el = wrap.current!;
       const edge = resizeEdge(h);
@@ -368,6 +373,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
       if (Math.hypot(ev.clientX - t.x, ev.clientY - t.y) > 10 || Date.now() - t.t > 600) return;
       const h = t.h;
       if (h.area === 'cell' && af(h)) return;
+      if (h.area === 'cell' && !store.editing && tapHooks(h, 'touch')) return;
       if (store.editing && pointingFormula() && h.area === 'cell') { insertRefWhileEditing({ row: h.row, col: h.col }); return; }
       if (store.editing && !store.commitEdit()) return;
       if (h.area === 'colHeader') { store.selectRange({ r1: 0, c1: h.col, r2: MAX_ROWS - 1, c2: h.col }); return; }
@@ -452,6 +458,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
   const onKeyDown = (ev: React.KeyboardEvent) => {
     // Keys from the cell editor bubble up here after it has handled them.
     if (ev.target === editor.current || (ev.target as Element).closest?.('.dvlist,.filterpop,.objlayer')) return;
+    if (!store.editing && gridHooks().some((g) => g.key?.(store, ev.nativeEvent))) { ev.preventDefault(); return; }
     const k = ev.key;
     const printable = k.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey && !(k === ' ' && ev.shiftKey) && !ev.nativeEvent.isComposing;
     if (printable && !(ev.target instanceof HTMLInputElement) && !(ev.target instanceof HTMLTextAreaElement)) {
@@ -578,6 +585,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
       onKeyDown={onKeyDown} onBeforeInput={onBeforeInput}>
       <div className="scroller" ref={scroller} onScroll={onScroll}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => { pointer.current = null; touchStart.current = null; setDragState({}); }}
+        onPointerLeave={(ev) => { if (ev.pointerType !== 'touch') for (const g of gridHooks()) g.hover?.(store, null); }}
         onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
         onWheel={(ev) => { if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); run(store, ev.deltaY < 0 ? 'view.zoomIn' : 'view.zoomOut'); } }}>
         <div className="spacer" style={{ width: spacerW, height: spacerH }}>

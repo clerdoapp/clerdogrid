@@ -4,6 +4,7 @@ import { formatValue } from '../../formats/numfmt';
 import { colIndex, colName, type CellRange, type Chart, type ChartSeries, type ChartType } from '../../model/workbook';
 import { displayText } from '../../app/ops/clipboard';
 import type { GridStore } from '../../app/store';
+import { comboKind, traits, type SeriesKind } from './chartTypes';
 
 // ---------- Axis ticks ----------
 
@@ -29,7 +30,7 @@ export const niceScale = (lo: number, hi: number, maxTicks = 6): Scale => {
     else { const d = Math.abs(lo) * 0.1; lo -= d; hi += d; }
   }
   const n = Math.max(2, maxTicks);
-  const step = niceNum(niceNum(hi - lo, false) / (n - 1), true);
+  const step = niceNum((hi - lo) / (n - 1), true);
   const min = clean(Math.floor(lo / step + 1e-9) * step);
   const max = clean(Math.ceil(hi / step - 1e-9) * step);
   const ticks: number[] = [];
@@ -96,37 +97,57 @@ export const defaultOrientation = (m: Scalar[][], h: Headers): Orientation => {
  * Series formulas for a block of cells. `m` holds the block's values (used only for header detection).
  * By columns, each data column is a series; by rows, each data row is.
  */
+const labelColumns = (m: Scalar[][], h: Headers): number => {
+  const body = m.slice(h.firstRow ? 1 : 0);
+  const cols = m[0]?.length ?? 0;
+  let n = 0;
+  while (n < cols - 1 && body.every((r) => typeof r[n] !== 'number')) n++;
+  return Math.max(n, h.firstCol ? 1 : 0);
+};
+
 export const buildSeries = (sheet: string, r: CellRange, m: Scalar[][], opts: { orientation?: Orientation; headers?: Headers; type?: ChartType } = {}): ChartSeries[] => {
   const h = opts.headers ?? detectHeaders(m);
-  const orient = opts.orientation ?? defaultOrientation(m, h);
-  const top = r.r1 + (h.firstRow ? 1 : 0), left = r.c1 + (h.firstCol ? 1 : 0);
+  const type = opts.type ?? 'column';
+  const fam = traits(type).family;
+  const hierarchy = fam === 'treemap' || fam === 'sunburst';
+  const xy = fam === 'scatter' || fam === 'bubble';
+  // Hierarchy charts read every leading text column as a level; their data always runs down columns.
+  const orient = hierarchy ? 'cols' : opts.orientation ?? (xy ? 'cols' : defaultOrientation(m, h));
+  const labelCols = hierarchy ? labelColumns(m, h) : h.firstCol ? 1 : 0;
+  const top = r.r1 + (h.firstRow ? 1 : 0), left = r.c1 + (orient === 'cols' ? labelCols : h.firstCol ? 1 : 0);
   if (top > r.r2 || left > r.c2) return [];
   const out: ChartSeries[] = [];
   if (orient === 'cols') {
     let first = left;
-    let categories = h.firstCol ? refString(sheet, { r1: top, c1: r.c1, r2: r.r2, c2: r.c1 }) : undefined;
-    // A scatter chart without a label column uses its first column as the x values.
-    if (opts.type === 'scatter' && !h.firstCol && r.c2 > left) { categories = refString(sheet, { r1: top, c1: left, r2: r.r2, c2: left }); first = left + 1; }
-    for (let c = first; c <= r.c2; c++) {
-      out.push({
+    let categories = labelCols ? refString(sheet, { r1: top, c1: r.c1, r2: r.r2, c2: r.c1 + labelCols - 1 }) : undefined;
+    // An x-y chart without a label column uses its first column as the x values.
+    if (xy && !labelCols && r.c2 > left) { categories = refString(sheet, { r1: top, c1: left, r2: r.r2, c2: left }); first = left + 1; }
+    const step = fam === 'bubble' ? 2 : 1;
+    for (let c = first; c <= r.c2; c += step) {
+      const s: ChartSeries = {
         name: h.firstRow ? refString(sheet, { r1: r.r1, c1: c, r2: r.r1, c2: c }) : `Series ${out.length + 1}`,
         values: refString(sheet, { r1: top, c1: c, r2: r.r2, c2: c }),
         ...(categories ? { categories } : {}),
-      });
+      };
+      if (fam === 'bubble' && c + 1 <= r.c2) s.sizes = refString(sheet, { r1: top, c1: c + 1, r2: r.r2, c2: c + 1 });
+      out.push(s);
     }
   } else {
     let first = top;
     let categories = h.firstRow ? refString(sheet, { r1: r.r1, c1: left, r2: r.r1, c2: r.c2 }) : undefined;
-    if (opts.type === 'scatter' && !h.firstRow && r.r2 > top) { categories = refString(sheet, { r1: top, c1: left, r2: top, c2: r.c2 }); first = top + 1; }
-    for (let row = first; row <= r.r2; row++) {
-      out.push({
+    if (xy && !h.firstRow && r.r2 > top) { categories = refString(sheet, { r1: top, c1: left, r2: top, c2: r.c2 }); first = top + 1; }
+    const step = fam === 'bubble' ? 2 : 1;
+    for (let row = first; row <= r.r2; row += step) {
+      const s: ChartSeries = {
         name: h.firstCol ? refString(sheet, { r1: row, c1: r.c1, r2: row, c2: r.c1 }) : `Series ${out.length + 1}`,
         values: refString(sheet, { r1: row, c1: left, r2: row, c2: r.c2 }),
         ...(categories ? { categories } : {}),
-      });
+      };
+      if (fam === 'bubble' && row + 1 <= r.r2) s.sizes = refString(sheet, { r1: row + 1, c1: left, r2: row + 1, c2: r.c2 });
+      out.push(s);
     }
   }
-  if (opts.type === 'combo') out.forEach((s, i) => { s.type = i === 0 ? 'column' : 'line'; });
+  if (traits(type).combo) out.forEach((s, i) => { s.type = comboKind(type, i, out.length); });
   return out;
 };
 
@@ -168,6 +189,8 @@ export const recommendTypes = (m: Scalar[][], h: Headers = detectHeaders(m)): Ch
   if (!h.firstCol && !h.firstRow && seriesCount >= 2 && o === 'cols' && nums.length === body.flat().filter((v) => v !== null).length) push('scatter');
   if (timeLike || points > 12) push('line', 'column', 'area');
   if (seriesCount === 1 && points <= 8 && nums.length && nums.every((n) => n >= 0)) push(longLabels ? 'bar' : 'column', 'pie', 'doughnut');
+  if (seriesCount === 1 && points >= 12 && !h.firstCol) push('histogram', 'boxWhisker');
+  if (seriesCount === 1 && points >= 3 && points <= 15 && h.firstCol && nums.length && nums.every((n) => n >= 0)) push('pareto', 'treemap');
   if (seriesCount > 1) push('column', 'stackedColumn', 'line', 'bar', 'combo');
   if (longLabels) push('bar');
   push('column', 'line', 'bar', 'pie');
@@ -176,18 +199,41 @@ export const recommendTypes = (m: Scalar[][], h: Headers = detectHeaders(m)): Ch
 
 // ---------- Resolving live data ----------
 
-export interface ResolvedSeries { name: string; values: (number | null)[]; color: string; type: 'column' | 'line' }
+export interface ResolvedSeries {
+  name: string; values: (number | null)[]; color: string; type: SeriesKind;
+  /** Bubble sizes. */
+  sizes: (number | null)[] | null;
+  /** Measured on the second value axis. */
+  secondary: boolean;
+}
 export interface ResolvedChart {
   categories: string[];
-  /** Numeric x values for scatter charts. */
+  /** Numeric x values for scatter and bubble charts. */
   xs: (number | null)[] | null;
+  /** Category levels per point (treemap and sunburst). */
+  paths: string[][];
   series: ResolvedSeries[];
-  /** Number format of the first value cell, for axis and label text. */
+  /** Number format for axis and label text: the chart's own, else that of the first value cell. */
   fmt: string;
 }
 
 export const PALETTE_SIZE = 10;
-export const seriesColor = (i: number, custom?: string): string => custom ?? `var(--chart-${(i % PALETTE_SIZE) + 1})`;
+export const STYLE_COUNT = 5;
+export const STYLE_NAMES = ['Mixed', 'Greens', 'Forest and sun', 'Mint and slate', 'Soft'];
+const STYLE_SIZE = 8;
+/** Colour of series (or slice) `i` in colour set `style`; a series' own colour wins. */
+export const seriesColor = (i: number, custom?: string, style = 0): string => {
+  if (custom) return custom;
+  if (!style || style >= STYLE_COUNT) return `var(--chart-${(i % PALETTE_SIZE) + 1})`;
+  return `var(--chart-s${style}-${(i % STYLE_SIZE) + 1})`;
+};
+
+/** Series indexes on the second axis, including the default for the two-axis combo. */
+export const secondaryOf = (chart: Chart): Set<number> => {
+  if (chart.options?.secondary) return new Set(chart.options.secondary);
+  if (chart.type === 'comboSecondary') return new Set(chart.series.flatMap((s, i) => ((s.type ?? comboKind(chart.type, i, chart.series.length)) === 'line' ? [i] : [])));
+  return new Set();
+};
 
 const MAX_POINTS = 4000;
 
@@ -219,30 +265,47 @@ const readFormula = (store: GridStore, formula: string, sheetIdx: number): Cells
 };
 
 const looksLikeRef = (s: string): boolean => /^=/.test(s) || parseRef(s) !== null;
+const num = (x: Scalar): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
 
 export const resolveChart = (store: GridStore, chart: Chart, sheetIdx = store.sheetIndex): ResolvedChart => {
-  let categories: string[] = [];
-  let xs: (number | null)[] | null = null;
+  let catTexts: string[] = [];
+  let catValues: Scalar[] = [];
   let fmt = 'General';
+  const tr = traits(chart.type);
+  const style = chart.options?.style ?? 0;
+  const second = secondaryOf(chart);
   const series = chart.series.map((s, i): ResolvedSeries => {
     const v = readFormula(store, s.values, sheetIdx);
     if (i === 0) fmt = v.fmt;
-    if (s.categories && !categories.length) {
+    if (s.categories && !catTexts.length) {
       const c = readFormula(store, s.categories, sheetIdx);
-      categories = c.texts;
-      if (chart.type === 'scatter') xs = c.values.map((x) => (typeof x === 'number' ? x : null));
+      catTexts = c.texts;
+      catValues = c.values;
     }
     const name = s.name ? (looksLikeRef(s.name) ? readFormula(store, s.name, sheetIdx).texts.join(' ') : s.name) : '';
     return {
       name: name || `Series ${i + 1}`,
-      values: v.values.map((x) => (typeof x === 'number' && Number.isFinite(x) ? x : null)),
-      color: seriesColor(i, s.color),
-      type: chart.type === 'combo' ? s.type ?? (i === 0 ? 'column' : 'line') : chart.type === 'line' || chart.type === 'radar' ? 'line' : 'column',
+      values: v.values.map(num),
+      color: seriesColor(i, s.color, style),
+      type: tr.combo ? s.type ?? comboKind(chart.type, i, chart.series.length) : tr.base,
+      sizes: s.sizes ? readFormula(store, s.sizes, sheetIdx).values.map(num) : null,
+      secondary: second.has(i),
     };
   });
   const n = Math.max(0, ...series.map((s) => s.values.length));
+  // A category range may span several columns (hierarchy levels); split it into one path per point.
+  const k = n && catTexts.length > n ? Math.max(1, Math.round(catTexts.length / n)) : 1;
+  const paths: string[][] = [];
+  for (let i = 0; i < n; i++) paths.push(k === 1 ? [catTexts[i] ?? ''] : catTexts.slice(i * k, i * k + k));
+  // Blank parent cells repeat the label above them, as in an outline.
+  if (k > 1) for (let i = 1; i < paths.length; i++) {
+    const p = paths[i]!, prev = paths[i - 1]!;
+    for (let d = 0; d < k - 1 && p[d] === '' && p.slice(d + 1).some((x) => x !== ''); d++) p[d] = prev[d] ?? '';
+  }
+  let categories = k === 1 ? catTexts.slice(0, n) : paths.map((p) => p.filter(Boolean).join(' / '));
   if (categories.length < n) categories = [...categories, ...Array.from({ length: n - categories.length }, (_, i) => String(categories.length + i + 1))];
-  return { categories: categories.slice(0, Math.max(n, 1)), xs, series, fmt };
+  const xs = tr.family === 'scatter' || tr.family === 'bubble' ? (catValues.length ? catValues.slice(0, Math.max(n, 1)).map(num) : null) : null;
+  return { categories: categories.slice(0, Math.max(n, 1)), xs, paths, series, fmt: chart.options?.numFmt || fmt };
 };
 
 /** Short text for a number on an axis or label, using the source cells' format. */

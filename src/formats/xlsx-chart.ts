@@ -1,5 +1,5 @@
 // DrawingML charts (ECMA-376 Part 1, 21.2) and spreadsheet drawing anchors (20.5).
-import type { Chart, ChartSeries, ChartType, Sheet } from '../model/workbook';
+import type { Chart, ChartOptions, ChartSeries, ChartType, Sheet } from '../model/workbook';
 import { attr, esc, find, findAll, kid, kids, numAttr, type XNode } from './xml';
 
 export const EMU_PER_PX = 9525;
@@ -72,6 +72,54 @@ export const pictureXml = (id: number, name: string, rid: string, a: Chart['anch
 
 export const DRAWING_HEAD = '<xdr:wsDr xmlns:xdr="http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">';
 
+// ---------------------------------------------------------------- ClerdoGrid extension
+//
+// Kinds with no DrawingML equivalent (histogram, Pareto, box and whisker, treemap, sunburst,
+// waterfall, funnel) are saved as a clustered column chart, the closest shape other apps can show.
+// The real type and the chart's options travel in an extension list inside the same chart part
+// (ECMA-376 Part 1, 21.2.2.64 and Part 3 extensibility): apps that don't know it skip it.
+// On read, the extension only applies while the chart still has the fallback shape it was saved
+// with, so a chart that another app has changed keeps that app's version.
+
+export const CLERDO_EXT_URI = '{C6A0D6B2-6F43-4E57-9B1D-2F5E1C3A7D10}';
+const CLERDO_NS = 'https://clerdo.app/ns/grid/chart/1';
+
+const EXTENDED: ChartType[] = ['histogram', 'pareto', 'boxWhisker', 'treemap', 'sunburst', 'waterfall', 'funnel'];
+
+const ALL_TYPES: ChartType[] = [
+  'column', 'stackedColumn', 'percentColumn', 'bar', 'stackedBar', 'percentBar',
+  'line', 'stackedLine', 'percentLine', 'lineMarkers', 'stackedLineMarkers', 'percentLineMarkers',
+  'area', 'stackedArea', 'percentArea', 'pie', 'doughnut',
+  'scatter', 'scatterSmoothMarkers', 'scatterSmooth', 'scatterLinesMarkers', 'scatterLines', 'bubble',
+  'histogram', 'pareto', 'boxWhisker', 'combo', 'comboSecondary', 'comboAreaColumn',
+  'treemap', 'sunburst', 'waterfall', 'radar', 'radarMarkers', 'radarFilled', 'funnel',
+];
+const isType = (t: unknown): t is ChartType => typeof t === 'string' && (ALL_TYPES as string[]).includes(t);
+
+const finiteNum = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+const intList = (v: unknown): number[] | undefined =>
+  Array.isArray(v) ? v.filter((x): x is number => Number.isInteger(x) && x >= 0 && x < 100000).slice(0, 4096) : undefined;
+
+/** Options from untrusted JSON: only known fields with the right types are kept. */
+export const sanitizeOptions = (raw: unknown): ChartOptions | undefined => {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const r = raw as Record<string, unknown>;
+  const o: ChartOptions = {};
+  const sec = intList(r.secondary); if (sec?.length) o.secondary = sec;
+  const tot = intList(r.totals); if (tot) o.totals = tot;
+  const bc = finiteNum(r.binCount); if (bc !== undefined && bc >= 1) o.binCount = Math.min(1000, Math.round(bc));
+  const bw = finiteNum(r.binWidth); if (bw !== undefined && bw > 0) o.binWidth = bw;
+  if (r.labelMode === 'value' || r.labelMode === 'percent' || r.labelMode === 'both') o.labelMode = r.labelMode;
+  if (r.gridlines === false) o.gridlines = false;
+  const mn = finiteNum(r.min); if (mn !== undefined) o.min = mn;
+  const mx = finiteNum(r.max); if (mx !== undefined) o.max = mx;
+  if (typeof r.numFmt === 'string' && r.numFmt.length <= 255) o.numFmt = r.numFmt;
+  const st = finiteNum(r.style); if (st !== undefined && Number.isInteger(st) && st > 0 && st < 32) o.style = st;
+  if (r.hideMean === true) o.hideMean = true;
+  if (r.hideOutliers === true) o.hideOutliers = true;
+  return Object.keys(o).length ? o : undefined;
+};
+
 // ---------------------------------------------------------------- chart reading
 
 const richText = (n: XNode | undefined): string | undefined => {
@@ -92,12 +140,12 @@ const seriesRef = (n: XNode | undefined): string | undefined => {
 
 const seriesColor = (ser: XNode): string | undefined => {
   const sp = kid(ser, 'spPr');
-  const fill = kid(sp, 'solidFill') ?? kid(kid(sp, 'ln'), 'solidFill');
+  const fill = kid(sp, 'solidFill') ?? kid(kid(sp, 'ln'), 'solidFill') ?? kid(kid(kid(ser, 'marker'), 'spPr'), 'solidFill');
   const c = attr(kid(fill, 'srgbClr'), 'val');
   return c && /^[0-9A-Fa-f]{6}$/.test(c) ? '#' + c.toUpperCase() : undefined;
 };
 
-const readSeries = (ser: XNode, sub?: 'column' | 'line'): ChartSeries => {
+const readSeries = (ser: XNode, sub?: ChartSeries['type']): ChartSeries => {
   const s: ChartSeries = { values: seriesRef(kid(ser, 'val') ?? kid(ser, 'yVal')) ?? '' };
   const tx = kid(ser, 'tx');
   if (tx) { const f = find(tx, 'f'); const v = find(tx, 'v'); const name = f?.text ?? v?.text; if (name) s.name = name; }
@@ -106,57 +154,159 @@ const readSeries = (ser: XNode, sub?: 'column' | 'line'): ChartSeries => {
   const color = seriesColor(ser);
   if (color) s.color = color;
   if (sub) s.type = sub;
+  const sizes = seriesRef(kid(ser, 'bubbleSize'));
+  if (sizes) s.sizes = sizes;
   return s;
 };
 
 const LEGEND: Record<string, Chart['legend']> = { r: 'right', b: 'bottom', t: 'top', l: 'left', tr: 'right' };
+
+/** Whether any series draws point markers. */
+const hasMarkers = (g: XNode): boolean => kids(g, 'ser').some((s) => {
+  const m = kid(s, 'marker');
+  return m ? (attr(kid(m, 'symbol'), 'val') ?? 'auto') !== 'none' : attr(kid(g, 'marker'), 'val') !== '0';
+});
+const serFlag = (g: XNode, tag: string): boolean => kids(g, 'ser').some((s) => attr(kid(s, tag), 'val') === '1' || attr(kid(s, tag), 'val') === 'true');
+const lineHidden = (g: XNode): boolean => kids(g, 'ser').length > 0 && kids(g, 'ser').every((s) => !!kid(kid(kid(s, 'spPr'), 'ln'), 'noFill'));
+
+const groupType = (g: XNode): ChartType | undefined => {
+  const grouping = attr(kid(g, 'grouping'), 'val') ?? 'standard';
+  const stack = grouping === 'stacked' ? 'stacked' : grouping === 'percentStacked' ? 'percent' : '';
+  switch (g.name) {
+    case 'barChart': case 'bar3DChart': {
+      const bar = attr(kid(g, 'barDir'), 'val') === 'bar';
+      if (stack === 'stacked') return bar ? 'stackedBar' : 'stackedColumn';
+      if (stack === 'percent') return bar ? 'percentBar' : 'percentColumn';
+      return bar ? 'bar' : 'column';
+    }
+    case 'lineChart': case 'line3DChart': case 'stockChart': {
+      const m = g.name === 'lineChart' && hasMarkers(g);
+      if (stack === 'stacked') return m ? 'stackedLineMarkers' : 'stackedLine';
+      if (stack === 'percent') return m ? 'percentLineMarkers' : 'percentLine';
+      return m ? 'lineMarkers' : 'line';
+    }
+    case 'areaChart': case 'area3DChart': return stack === 'stacked' ? 'stackedArea' : stack === 'percent' ? 'percentArea' : 'area';
+    case 'pieChart': case 'pie3DChart': case 'ofPieChart': return 'pie';
+    case 'doughnutChart': return 'doughnut';
+    case 'scatterChart': {
+      const style = attr(kid(g, 'scatterStyle'), 'val') ?? 'marker';
+      const lines = !lineHidden(g) && style !== 'marker' && style !== 'none';
+      const markers = hasMarkers(g);
+      const smooth = serFlag(g, 'smooth') || ((style === 'smooth' || style === 'smoothMarker') && !kids(g, 'ser').some((s) => kid(s, 'smooth')));
+      if (!lines) return 'scatter';
+      if (smooth) return markers ? 'scatterSmoothMarkers' : 'scatterSmooth';
+      return markers ? 'scatterLinesMarkers' : 'scatterLines';
+    }
+    case 'bubbleChart': return 'bubble';
+    case 'radarChart': {
+      const style = attr(kid(g, 'radarStyle'), 'val') ?? 'standard';
+      if (style === 'filled') return 'radarFilled';
+      return hasMarkers(g) ? 'radarMarkers' : 'radar';
+    }
+    default: return undefined;
+  }
+};
+
+const subKind = (t: ChartType): NonNullable<ChartSeries['type']> =>
+  /line/i.test(t) ? 'line' : /area/i.test(t) ? 'area' : 'column';
+
+const readExt = (root: XNode): { type: ChartType; base: ChartType; options?: ChartOptions } | undefined => {
+  const ext = kids(kid(root, 'extLst'), 'ext').find((e) => attr(e, 'uri') === CLERDO_EXT_URI);
+  const el = kid(ext, 'chart');
+  const type = attr(el, 'type'), base = attr(el, 'base');
+  if (!isType(type) || !isType(base)) return undefined;
+  let options: ChartOptions | undefined;
+  const json = attr(el, 'options');
+  if (json && json.length < 200000) {
+    try { options = sanitizeOptions(JSON.parse(json)); } catch { options = undefined; }
+  }
+  return { type, base, ...(options ? { options } : {}) };
+};
 
 export const readChart = (root: XNode, id: string, anchor: Chart['anchor']): Chart | undefined => {
   const chart = kid(root, 'chart');
   const plot = kid(chart, 'plotArea');
   if (!plot) return undefined;
   const groups = plot.children.filter((c) => /Chart$/.test(c.name));
-  if (!groups.length) return undefined;
-  const typeOf = (g: XNode): ChartType | undefined => {
-    const grouping = attr(kid(g, 'grouping'), 'val') ?? 'standard';
-    switch (g.name) {
-      case 'barChart': case 'bar3DChart': {
-        const bar = attr(kid(g, 'barDir'), 'val') === 'bar';
-        if (grouping === 'stacked') return bar ? 'stackedBar' : 'stackedColumn';
-        if (grouping === 'percentStacked') return bar ? 'stackedBar' : 'percentColumn';
-        return bar ? 'bar' : 'column';
-      }
-      case 'lineChart': case 'line3DChart': case 'stockChart': return 'line';
-      case 'areaChart': case 'area3DChart': return grouping === 'stacked' || grouping === 'percentStacked' ? 'stackedArea' : 'area';
-      case 'pieChart': case 'pie3DChart': case 'ofPieChart': return 'pie';
-      case 'doughnutChart': return 'doughnut';
-      case 'scatterChart': case 'bubbleChart': return 'scatter';
-      case 'radarChart': return 'radar';
-      default: return undefined;
-    }
-  };
-  const types = groups.map(typeOf);
-  const known = groups.filter((_, i) => types[i]);
+  const known = groups.map((g) => ({ g, t: groupType(g) })).filter((x): x is { g: XNode; t: ChartType } => !!x.t && kids(x.g, 'ser').length > 0);
   if (!known.length) return undefined;
-  const combo = known.length > 1;
+
+  // Axis pairs: the first group's axes are primary; any other value axis is secondary.
+  const axIdsOf = (g: XNode) => kids(g, 'axId').map((a) => attr(a, 'val') ?? '');
+  const primaryAx = new Set(axIdsOf(known[0]!.g));
+  const onSecondary = (g: XNode) => { const ids = axIdsOf(g); return ids.length > 0 && !ids.some((x) => primaryAx.has(x)); };
+
+  // Groups that differ only in axis (one per axis) are one type, not a combo.
+  const combo = new Set(known.map((k) => k.t)).size > 1;
   const series: ChartSeries[] = [];
-  for (const g of known) {
-    const t = typeOf(g)!;
-    const sub = combo ? (t === 'line' ? 'line' : 'column') : undefined;
-    for (const ser of kids(g, 'ser')) series.push(readSeries(ser, sub));
+  const secondary: number[] = [];
+  for (const { g, t } of known) {
+    const sec = onSecondary(g);
+    for (const ser of kids(g, 'ser')) {
+      if (sec) secondary.push(series.length);
+      series.push(readSeries(ser, combo ? subKind(t) : undefined));
+    }
   }
-  const c: Chart = { id, type: combo ? 'combo' : types.find(Boolean)!, series, anchor };
+  let type: ChartType = known[0]!.t;
+  const options: ChartOptions = {};
+  if (combo) {
+    const kinds = known.map((k) => k.t);
+    const barCol = kinds.some((t) => t === 'column');
+    const area = kinds.some((t) => t === 'stackedArea');
+    const lineSecondary = known.filter((k) => subKind(k.t) === 'line').every((k) => onSecondary(k.g)) && known.filter((k) => subKind(k.t) !== 'line').every((k) => !onSecondary(k.g));
+    if (barCol && area && known.length === 2) type = 'comboAreaColumn';
+    else if (barCol && kinds.some((t) => subKind(t) === 'line') && lineSecondary && secondary.length) type = 'comboSecondary';
+    else type = 'combo';
+    if (type === 'comboAreaColumn') series.forEach((s) => { if (s.type === 'line') s.type = 'column'; });
+  }
+  const defaultSecondary = type === 'comboSecondary' ? series.flatMap((s, i) => (s.type === 'line' ? [i] : [])) : [];
+  if (secondary.length && secondary.join() !== defaultSecondary.join()) options.secondary = secondary;
+  if (type === 'comboSecondary' && !secondary.length) type = 'combo';
+
+  const c: Chart = { id, type, series, anchor };
   const title = richText(kid(chart, 'title'));
   if (title) c.title = title;
   const legend = kid(chart, 'legend');
   c.legend = legend ? LEGEND[attr(kid(legend, 'legendPos'), 'val') ?? 'r'] ?? 'right' : 'none';
-  const axTitle = (ax: XNode | undefined): string | undefined => richText(kid(ax, 'title'));
-  const catAx = kid(plot, 'catAx') ?? kid(plot, 'dateAx') ?? kids(plot, 'valAx').find((a) => /^[bt]$/.test(attr(kid(a, 'axPos'), 'val') ?? ''));
-  const valAx = kids(plot, 'valAx').find((a) => a !== catAx);
-  const x = axTitle(catAx), y = axTitle(valAx);
-  if (x || y) c.axisTitles = { ...(x ? { x } : {}), ...(y ? { y } : {}) };
-  const dl = known.some((g) => attr(kid(kid(g, 'dLbls'), 'showVal'), 'val') === '1' || kids(g, 'ser').some((s) => attr(kid(kid(s, 'dLbls'), 'showVal'), 'val') === '1'));
-  if (dl) c.dataLabels = true;
+
+  const axes = plot.children.filter((n) => /Ax$/.test(n.name));
+  const axById = (idv: string) => axes.find((a) => attr(kid(a, 'axId'), 'val') === idv);
+  const pIds = axIdsOf(known[0]!.g);
+  const pAxes = pIds.map(axById).filter((a): a is XNode => !!a);
+  const scatterLike = known[0]!.g.name === 'scatterChart' || known[0]!.g.name === 'bubbleChart';
+  const catAx = scatterLike
+    ? pAxes.find((a) => /^[bt]$/.test(attr(kid(a, 'axPos'), 'val') ?? '')) ?? pAxes[0]
+    : pAxes.find((a) => a.name === 'catAx' || a.name === 'dateAx' || a.name === 'serAx');
+  const valAx = pAxes.find((a) => a.name === 'valAx' && a !== catAx);
+  const secAx = known.filter((k) => onSecondary(k.g)).flatMap((k) => axIdsOf(k.g)).map(axById).find((a) => a?.name === 'valAx');
+  const x = richText(kid(catAx, 'title')), y = richText(kid(valAx, 'title')), y2 = richText(kid(secAx, 'title'));
+  if (x || y || y2) c.axisTitles = { ...(x ? { x } : {}), ...(y ? { y } : {}), ...(y2 ? { y2 } : {}) };
+  if (valAx) {
+    const sc = kid(valAx, 'scaling');
+    const mn = numAttr(kid(sc, 'min'), 'val'), mx = numAttr(kid(sc, 'max'), 'val');
+    if (mn !== undefined && Number.isFinite(mn)) options.min = mn;
+    if (mx !== undefined && Number.isFinite(mx)) options.max = mx;
+    if (!kid(valAx, 'majorGridlines')) options.gridlines = false;
+    const nf = kid(valAx, 'numFmt');
+    const code = attr(nf, 'formatCode');
+    if (code && attr(nf, 'sourceLinked') === '0' && code !== 'General') options.numFmt = code;
+  }
+
+  const flag = (n: XNode | undefined, tag: string) => attr(kid(n, tag), 'val') === '1' || attr(kid(n, tag), 'val') === 'true';
+  const lbls = known.flatMap(({ g }) => [kid(g, 'dLbls'), ...kids(g, 'ser').map((s) => kid(s, 'dLbls'))]).filter((n): n is XNode => !!n);
+  const showVal = lbls.some((n) => flag(n, 'showVal')), showPct = lbls.some((n) => flag(n, 'showPercent'));
+  if (showVal || showPct) c.dataLabels = true;
+  if (type === 'pie' || type === 'doughnut') {
+    if (showVal && showPct) options.labelMode = 'both';
+    else if (showVal) options.labelMode = 'value';
+  }
+
+  const ext = readExt(root);
+  if (ext && ext.base === type) {
+    c.type = ext.type;
+    if (ext.options) c.options = ext.options; else delete c.options;
+    if (!['combo', 'comboSecondary', 'comboAreaColumn'].includes(c.type)) c.series = c.series.map(({ type: _t, ...s }) => s);
+  } else if (Object.keys(options).length) c.options = options;
   return c;
 };
 
@@ -169,25 +319,35 @@ const txRich = (text: string): string =>
 const titleXml = (text: string | undefined): string => (text ? `<c:title>${txRich(text)}<c:overlay val="0"/></c:title>` : '');
 const v = (tag: string, val: string | number): string => `<c:${tag} val="${val}"/>`;
 
-const dLblsXml = (show: boolean): string =>
-  `<c:dLbls>${v('showLegendKey', 0)}${v('showVal', show ? 1 : 0)}${v('showCatName', 0)}${v('showSerName', 0)}${v('showPercent', 0)}${v('showBubbleSize', 0)}</c:dLbls>`;
+const dLblsXml = (show: boolean, pct = false): string =>
+  `<c:dLbls>${v('showLegendKey', 0)}${v('showVal', show ? 1 : 0)}${v('showCatName', 0)}${v('showSerName', 0)}${v('showPercent', pct ? 1 : 0)}${v('showBubbleSize', 0)}</c:dLbls>`;
 
 const refXml = (ref: string | undefined, num: boolean): string => {
   if (!ref) return '';
   return num ? `<c:numRef><c:f>${esc(ref)}</c:f></c:numRef>` : `<c:strRef><c:f>${esc(ref)}</c:f></c:strRef>`;
 };
 
-const serXml = (s: ChartSeries, i: number, kind: 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'radar'): string => {
+type SerKind = 'bar' | 'line' | 'area' | 'pie' | 'scatter' | 'radar' | 'bubble';
+interface SerStyle { markers?: boolean; smooth?: boolean; lines?: boolean; filled?: boolean }
+
+const solid = (color: string | undefined): string => (color ? `<a:solidFill><a:srgbClr val="${color.replace('#', '').slice(0, 6).toUpperCase()}"/></a:solidFill>` : '');
+
+const serXml = (s: ChartSeries, i: number, kind: SerKind, st: SerStyle = {}): string => {
   let x = v('idx', i) + v('order', i);
   if (s.name) x += REF_RE.test(s.name) ? `<c:tx>${refXml(s.name, false)}</c:tx>` : `<c:tx><c:v>${esc(s.name)}</c:v></c:tx>`;
   // Without a colour of its own, a series takes the theme's automatic colour.
-  const fill = s.color ? `<a:solidFill><a:srgbClr val="${s.color.replace('#', '').slice(0, 6).toUpperCase()}"/></a:solidFill>` : '';
-  if (kind === 'line' || kind === 'radar') x += `${fill ? `<c:spPr><a:ln w="28575" cap="rnd">${fill}<a:round/></a:ln></c:spPr>` : ''}<c:marker>${v('symbol', 'none')}</c:marker>`;
-  else if (kind === 'scatter') x += `<c:spPr><a:ln w="19050"><a:noFill/></a:ln></c:spPr><c:marker>${v('symbol', 'circle')}${v('size', 5)}${fill ? `<c:spPr>${fill}</c:spPr>` : ''}</c:marker>`;
+  const fill = solid(s.color);
+  const marker = (on: boolean) => (on ? `<c:marker>${v('symbol', 'circle')}${v('size', 5)}${fill ? `<c:spPr>${fill}<a:ln>${fill}</a:ln></c:spPr>` : ''}</c:marker>` : `<c:marker>${v('symbol', 'none')}</c:marker>`);
+  if (kind === 'line' || (kind === 'radar' && !st.filled)) x += `${fill ? `<c:spPr><a:ln w="28575" cap="rnd">${fill}<a:round/></a:ln></c:spPr>` : ''}${marker(!!st.markers)}`;
+  else if (kind === 'radar') x += `${fill ? `<c:spPr>${fill}</c:spPr>` : ''}${marker(false)}`;
+  else if (kind === 'scatter') x += `<c:spPr><a:ln w="${st.lines ? 28575 : 19050}" cap="rnd">${st.lines ? fill : '<a:noFill/>'}${st.lines ? '<a:round/>' : ''}</a:ln></c:spPr>${marker(!!st.markers)}`;
   else if (kind !== 'pie' && fill) x += `<c:spPr>${fill}</c:spPr>`;
-  if (kind === 'bar') x += v('invertIfNegative', 0);
-  if (kind === 'scatter') x += `${s.categories ? `<c:xVal>${refXml(s.categories, true)}</c:xVal>` : ''}<c:yVal>${refXml(s.values, true)}</c:yVal>${v('smooth', 0)}`;
-  else {
+  if (kind === 'bar' || kind === 'bubble') x += v('invertIfNegative', 0);
+  if (kind === 'scatter' || kind === 'bubble') {
+    x += `${s.categories ? `<c:xVal>${refXml(s.categories, true)}</c:xVal>` : ''}<c:yVal>${refXml(s.values, true)}</c:yVal>`;
+    if (kind === 'bubble') x += `<c:bubbleSize>${s.sizes ? refXml(s.sizes, true) : refXml(s.values, true)}</c:bubbleSize>${v('bubble3D', 0)}`;
+    else x += v('smooth', st.smooth ? 1 : 0);
+  } else {
     x += s.categories ? `<c:cat>${refXml(s.categories, false)}</c:cat>` : '';
     x += `<c:val>${refXml(s.values, true)}</c:val>`;
     if (kind === 'line') x += v('smooth', 0);
@@ -195,68 +355,131 @@ const serXml = (s: ChartSeries, i: number, kind: 'bar' | 'line' | 'area' | 'pie'
   return `<c:ser>${x}</c:ser>`;
 };
 
-const AX_CAT = 500000001, AX_VAL = 500000002;
+const AX_CAT = 500000001, AX_VAL = 500000002, AX_CAT2 = 500000003, AX_VAL2 = 500000004;
 
-const axesXml = (c: Chart, horizontal: boolean, scatter: boolean): string => {
-  const catPos = horizontal ? 'l' : 'b', valPos = horizontal ? 'b' : 'l';
-  const common = (id: number, cross: number, pos: string, title: string | undefined, grid: boolean): string =>
-    v('axId', id) + `<c:scaling>${v('orientation', 'minMax')}</c:scaling>` + v('delete', 0) + v('axPos', pos)
-    + (grid ? '<c:majorGridlines/>' : '') + titleXml(title) + '<c:numFmt formatCode="General" sourceLinked="1"/>'
-    + v('majorTickMark', 'out') + v('minorTickMark', 'none') + v('tickLblPos', 'nextTo') + v('crossAx', cross) + v('crosses', 'autoZero');
-  const cat = scatter
-    ? `<c:valAx>${common(AX_CAT, AX_VAL, catPos, c.axisTitles?.x, false)}${v('crossBetween', 'midCat')}</c:valAx>`
-    : `<c:catAx>${common(AX_CAT, AX_VAL, catPos, c.axisTitles?.x, false)}${v('auto', 1)}${v('lblAlgn', 'ctr')}${v('lblOffset', 100)}${v('noMultiLvlLbl', 0)}</c:catAx>`;
-  const val = `<c:valAx>${common(AX_VAL, AX_CAT, valPos, c.axisTitles?.y, true)}${v('crossBetween', scatter ? 'midCat' : 'between')}</c:valAx>`;
-  return cat + val;
+interface AxisPlan { horizontal: boolean; scatter: boolean; secondary: boolean }
+
+const axesXml = (c: Chart, p: AxisPlan): string => {
+  const catPos = p.horizontal ? 'l' : 'b', valPos = p.horizontal ? 'b' : 'l';
+  const o = c.options ?? {};
+  const scaling = (withBounds: boolean) => `<c:scaling>${v('orientation', 'minMax')}${withBounds && o.max !== undefined ? v('max', o.max) : ''}${withBounds && o.min !== undefined ? v('min', o.min) : ''}</c:scaling>`;
+  const common = (id: number, cross: number, pos: string, title: string | undefined, opts: { grid: boolean; bounds: boolean; del?: boolean; fmt?: string; crosses?: string }): string =>
+    v('axId', id) + scaling(opts.bounds) + v('delete', opts.del ? 1 : 0) + v('axPos', pos)
+    + (opts.grid ? '<c:majorGridlines/>' : '') + titleXml(title)
+    + (opts.fmt ? `<c:numFmt formatCode="${esc(opts.fmt)}" sourceLinked="0"/>` : '<c:numFmt formatCode="General" sourceLinked="1"/>')
+    + v('majorTickMark', 'out') + v('minorTickMark', 'none') + v('tickLblPos', 'nextTo') + v('crossAx', cross) + v('crosses', opts.crosses ?? 'autoZero');
+  const grid = o.gridlines !== false;
+  const catTail = `${v('auto', 1)}${v('lblAlgn', 'ctr')}${v('lblOffset', 100)}${v('noMultiLvlLbl', 0)}`;
+  const cat = p.scatter
+    ? `<c:valAx>${common(AX_CAT, AX_VAL, catPos, c.axisTitles?.x, { grid: false, bounds: false })}${v('crossBetween', 'midCat')}</c:valAx>`
+    : `<c:catAx>${common(AX_CAT, AX_VAL, catPos, c.axisTitles?.x, { grid: false, bounds: false })}${catTail}</c:catAx>`;
+  const val = `<c:valAx>${common(AX_VAL, AX_CAT, valPos, c.axisTitles?.y, { grid, bounds: true, fmt: o.numFmt })}${v('crossBetween', p.scatter ? 'midCat' : 'between')}</c:valAx>`;
+  if (!p.secondary) return cat + val;
+  const cat2 = `<c:catAx>${common(AX_CAT2, AX_VAL2, 'b', undefined, { grid: false, bounds: false, del: true })}${catTail}</c:catAx>`;
+  const val2 = `<c:valAx>${common(AX_VAL2, AX_CAT2, 'r', c.axisTitles?.y2, { grid: false, bounds: false, fmt: o.numFmt, crosses: 'max' })}${v('crossBetween', 'between')}</c:valAx>`;
+  return cat + val + cat2 + val2;
+};
+
+/** The DrawingML type a chart is saved as. */
+export const savedAs = (t: ChartType): ChartType => (EXTENDED.includes(t) ? 'column' : t);
+
+const comboKindOf = (c: Chart, s: ChartSeries, i: number): NonNullable<ChartSeries['type']> => {
+  if (s.type) return s.type;
+  if (c.type === 'comboAreaColumn') return i < Math.max(1, Math.ceil(c.series.length / 2)) && !(c.series.length > 1 && i === c.series.length - 1) ? 'area' : 'column';
+  return i === 0 ? 'column' : 'line';
 };
 
 export const chartXml = (c: Chart): string => {
+  const o = c.options ?? {};
+  const type = savedAs(c.type);
   const dl = dLblsXml(!!c.dataLabels);
-  const axIds = v('axId', AX_CAT) + v('axId', AX_VAL);
-  const bar = (dir: 'col' | 'bar', grouping: string, list: ChartSeries[], offset = 0): string =>
-    `<c:barChart>${v('barDir', dir)}${v('grouping', grouping)}${v('varyColors', 0)}${list.map((s, i) => serXml(s, i + offset, 'bar')).join('')}${dl}`
-    + `${v('gapWidth', 150)}${grouping !== 'clustered' ? v('overlap', 100) : ''}${axIds}</c:barChart>`;
-  const line = (list: ChartSeries[], offset = 0): string =>
-    `<c:lineChart>${v('grouping', 'standard')}${v('varyColors', 0)}${list.map((s, i) => serXml(s, i + offset, 'line')).join('')}${dl}${v('marker', 1)}${axIds}</c:lineChart>`;
+  const pieDl = () => {
+    const mode = o.labelMode ?? 'percent';
+    return c.dataLabels ? dLblsXml(mode !== 'percent', mode !== 'value') : dLblsXml(false);
+  };
+  const ax = (sec: boolean) => (sec ? v('axId', AX_CAT2) + v('axId', AX_VAL2) : v('axId', AX_CAT) + v('axId', AX_VAL));
+  const sec = new Set(o.secondary ?? (c.type === 'comboSecondary' ? c.series.flatMap((s, i) => (comboKindOf(c, s, i) === 'line' ? [i] : [])) : []));
+  const indexed = c.series.map((s, i) => ({ s, i }));
+  const grp = (g: string) => (g === 'stacked' ? 'stacked' : g === 'percent' ? 'percentStacked' : g);
+  const bar = (dir: 'col' | 'bar', grouping: string, list: { s: ChartSeries; i: number }[], secondary = false): string =>
+    `<c:barChart>${v('barDir', dir)}${v('grouping', grp(grouping))}${v('varyColors', 0)}${list.map(({ s, i }) => serXml(s, i, 'bar')).join('')}${dl}`
+    + `${v('gapWidth', 150)}${grouping !== 'clustered' ? v('overlap', 100) : ''}${ax(secondary)}</c:barChart>`;
+  const line = (grouping: string, list: { s: ChartSeries; i: number }[], markers: boolean, secondary = false): string =>
+    `<c:lineChart>${v('grouping', grp(grouping))}${v('varyColors', 0)}${list.map(({ s, i }) => serXml(s, i, 'line', { markers })).join('')}${dl}${v('marker', 1)}${ax(secondary)}</c:lineChart>`;
+  const area = (grouping: string, list: { s: ChartSeries; i: number }[], secondary = false): string =>
+    `<c:areaChart>${v('grouping', grp(grouping))}${v('varyColors', 0)}${list.map(({ s, i }) => serXml(s, i, 'area')).join('')}${dl}${ax(secondary)}</c:areaChart>`;
+  /** One group per axis for types that may put some series on the right axis. */
+  const split = (make: (list: { s: ChartSeries; i: number }[], secondary: boolean) => string): string => {
+    const a = indexed.filter((x) => !sec.has(x.i)), b = indexed.filter((x) => sec.has(x.i));
+    return (a.length ? make(a, false) : '') + (b.length ? make(b, true) : '');
+  };
+
   let body = '';
-  let axes = true, horizontal = false, scatter = false;
-  switch (c.type) {
-    case 'column': body = bar('col', 'clustered', c.series); break;
-    case 'bar': body = bar('bar', 'clustered', c.series); horizontal = true; break;
-    case 'stackedColumn': body = bar('col', 'stacked', c.series); break;
-    case 'stackedBar': body = bar('bar', 'stacked', c.series); horizontal = true; break;
-    case 'percentColumn': body = bar('col', 'percentStacked', c.series); break;
-    case 'line': body = line(c.series); break;
-    case 'area': case 'stackedArea':
-      body = `<c:areaChart>${v('grouping', c.type === 'area' ? 'standard' : 'stacked')}${v('varyColors', 0)}${c.series.map((s, i) => serXml(s, i, 'area')).join('')}${dl}${axIds}</c:areaChart>`;
-      break;
+  const plan: AxisPlan = { horizontal: false, scatter: false, secondary: false };
+  let axes = true;
+  const stackOf = (t: ChartType) => (/^stacked/.test(t) ? 'stacked' : /^percent/.test(t) ? 'percent' : '');
+  switch (type) {
+    case 'column': body = split((l, s) => bar('col', 'clustered', l, s)); break;
+    case 'stackedColumn': case 'percentColumn': body = bar('col', stackOf(type), indexed); break;
+    case 'bar': case 'stackedBar': case 'percentBar': body = bar('bar', stackOf(type) || 'clustered', indexed); plan.horizontal = true; break;
+    case 'line': case 'lineMarkers': body = split((l, s) => line('standard', l, type === 'lineMarkers', s)); break;
+    case 'stackedLine': case 'percentLine': case 'stackedLineMarkers': case 'percentLineMarkers':
+      body = line(stackOf(type), indexed, /Markers$/.test(type)); break;
+    case 'area': body = split((l, s) => area('standard', l, s)); break;
+    case 'stackedArea': case 'percentArea': body = area(stackOf(type), indexed); break;
     case 'pie': case 'doughnut': {
       axes = false;
-      const sers = c.series.map((s, i) => serXml(s, i, 'pie')).join('');
-      body = c.type === 'pie'
-        ? `<c:pieChart>${v('varyColors', 1)}${sers}${dl}${v('firstSliceAng', 0)}</c:pieChart>`
-        : `<c:doughnutChart>${v('varyColors', 1)}${sers}${dl}${v('firstSliceAng', 0)}${v('holeSize', 50)}</c:doughnutChart>`;
+      const list = type === 'pie' ? c.series.slice(0, 1) : c.series;
+      const sers = list.map((s, i) => serXml(s, i, 'pie')).join('');
+      body = type === 'pie'
+        ? `<c:pieChart>${v('varyColors', 1)}${sers}${pieDl()}${v('firstSliceAng', 0)}</c:pieChart>`
+        : `<c:doughnutChart>${v('varyColors', 1)}${sers}${pieDl()}${v('firstSliceAng', 0)}${v('holeSize', 50)}</c:doughnutChart>`;
       break;
     }
-    case 'scatter':
-      scatter = true;
-      body = `<c:scatterChart>${v('scatterStyle', 'lineMarker')}${v('varyColors', 0)}${c.series.map((s, i) => serXml(s, i, 'scatter')).join('')}${dl}${axIds}</c:scatterChart>`;
-      break;
-    case 'radar':
-      body = `<c:radarChart>${v('radarStyle', 'marker')}${v('varyColors', 0)}${c.series.map((s, i) => serXml(s, i, 'radar')).join('')}${dl}${axIds}</c:radarChart>`;
-      break;
-    case 'combo': {
-      const cols = c.series.filter((s) => s.type !== 'line');
-      const lines = c.series.filter((s) => s.type === 'line');
-      body = (cols.length ? bar('col', 'clustered', cols) : '') + (lines.length ? line(lines, cols.length) : '');
+    case 'scatter': case 'scatterSmoothMarkers': case 'scatterSmooth': case 'scatterLinesMarkers': case 'scatterLines': {
+      plan.scatter = true;
+      const st: SerStyle = {
+        markers: type === 'scatter' || type === 'scatterSmoothMarkers' || type === 'scatterLinesMarkers',
+        smooth: type === 'scatterSmooth' || type === 'scatterSmoothMarkers',
+        lines: type !== 'scatter',
+      };
+      const style = !st.lines ? 'lineMarker' : st.smooth ? (st.markers ? 'smoothMarker' : 'smooth') : st.markers ? 'lineMarker' : 'line';
+      body = `<c:scatterChart>${v('scatterStyle', style)}${v('varyColors', 0)}${c.series.map((s, i) => serXml(s, i, 'scatter', st)).join('')}${dl}${ax(false)}</c:scatterChart>`;
       break;
     }
+    case 'bubble':
+      plan.scatter = true;
+      body = `<c:bubbleChart>${v('varyColors', 0)}${c.series.map((s, i) => serXml(s, i, 'bubble')).join('')}${dl}${v('bubble3D', 0)}${v('bubbleScale', 100)}${v('showNegBubbles', 0)}${ax(false)}</c:bubbleChart>`;
+      break;
+    case 'radar': case 'radarMarkers': case 'radarFilled': {
+      const style = type === 'radarFilled' ? 'filled' : type === 'radarMarkers' ? 'marker' : 'standard';
+      body = `<c:radarChart>${v('radarStyle', style)}${v('varyColors', 0)}${c.series.map((s, i) => serXml(s, i, 'radar', { markers: type === 'radarMarkers', filled: type === 'radarFilled' })).join('')}${dl}${ax(false)}</c:radarChart>`;
+      break;
+    }
+    case 'combo': case 'comboSecondary': case 'comboAreaColumn': {
+      // Areas first so columns and lines draw over them.
+      for (const secondary of [false, true]) {
+        const of = (k: string) => indexed.filter(({ s, i }) => comboKindOf(c, s, i) === k && sec.has(i) === secondary);
+        const a = of('area'), b = of('column'), l = of('line');
+        if (a.length) body += area(c.type === 'comboAreaColumn' ? 'stacked' : 'standard', a, secondary);
+        if (b.length) body += bar('col', 'clustered', b, secondary);
+        if (l.length) body += line('standard', l, true, secondary);
+      }
+      break;
+    }
+    default: body = bar('col', 'clustered', indexed);
   }
+  plan.secondary = sec.size > 0 && body.includes(`val="${AX_VAL2}"`);
   const legend = c.legend === 'none' ? '' : `<c:legend>${v('legendPos', { right: 'r', bottom: 'b', top: 't', left: 'l' }[c.legend ?? 'right'])}<c:overlay val="0"/></c:legend>`;
+  // The extension is written when the file alone can't bring the chart back as it is.
+  const needsExt = type !== c.type || o.style !== undefined || o.labelMode !== undefined && type !== 'pie' && type !== 'doughnut'
+    || o.totals !== undefined || o.binCount !== undefined || o.binWidth !== undefined || o.hideMean || o.hideOutliers;
+  const ext = needsExt
+    ? `<c:extLst><c:ext uri="${CLERDO_EXT_URI}"><cg:chart xmlns:cg="${CLERDO_NS}" type="${c.type}" base="${type}"${c.options ? ` options="${esc(JSON.stringify(c.options))}"` : ''}/></c:ext></c:extLst>`
+    : '';
   return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n'
     + '<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
     + v('roundedCorners', 0) + '<c:chart>' + (c.title ? titleXml(c.title) + v('autoTitleDeleted', 0) : v('autoTitleDeleted', 1))
-    + `<c:plotArea><c:layout/>${body}${axes ? axesXml(c, horizontal, scatter) : ''}</c:plotArea>`
-    + legend + v('plotVisOnly', 1) + v('dispBlanksAs', 'gap') + '</c:chart></c:chartSpace>';
+    + `<c:plotArea><c:layout/>${body}${axes ? axesXml(c, plan) : ''}</c:plotArea>`
+    + legend + v('plotVisOnly', 1) + v('dispBlanksAs', 'gap') + '</c:chart>' + ext + '</c:chartSpace>';
 };
-

@@ -44,7 +44,7 @@ const splitRows = (text: string, d: string): RawRow[] => {
         if (text[j + 1] === '"') { val += '"'; i = j + 2; }
         else { i = j + 1; break; }
       }
-      // anything between the closing quote and the delimiter is kept, as Excel does
+      // anything between the closing quote and the delimiter is kept, as spreadsheets do
       while (i < n && text[i] !== d && text[i] !== '\n' && text[i] !== '\r') val += text[i++];
     } else {
       let j = i;
@@ -71,7 +71,7 @@ const convert = (raw: string): [Scalar, string | undefined] => {
   if (up === 'TRUE') return [true, undefined];
   if (up === 'FALSE') return [false, undefined];
   if (ERROR_CODES.includes(up as ErrorCode)) return [new CellError(up as ErrorCode), undefined];
-  // Excel converts quoted fields as well ("007" becomes 7); only the ="..." idiom forces text.
+  // spreadsheet converts quoted fields as well ("007" becomes 7); only the ="..." idiom forces text.
   if (/^=".*"$/.test(s)) return [s.slice(2, -1), undefined];
   const n = parseNumber(s);
   if (n === null) return [raw, undefined];

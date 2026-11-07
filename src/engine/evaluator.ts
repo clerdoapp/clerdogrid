@@ -178,6 +178,12 @@ export class Evaluator {
     }
     const t = this.host.table(name);
     if (t) return ref(t.sheet, t.r1 + (t.header ? 1 : 0), t.c1, t.r2 - (t.totals ? 1 : 0), t.c2);
+    // A function name used as a value, e.g. =BYROW(A1:C3, SUM): it behaves like LAMBDA(x, SUM(x)).
+    const def = !sheetName ? getFunction(name) : undefined;
+    if (def) {
+      const lam: LambdaValue = { kind: 'lambda', params: ['x'], invoke: (vals) => (vals.length < def.min || vals.length > def.max ? Err.value : this.apply(def, vals, f)) };
+      return lam;
+    }
     return new CellError('#NAME?', name);
   }
 

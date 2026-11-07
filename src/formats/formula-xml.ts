@@ -39,7 +39,7 @@ const mapOutside = (formula: string, f: (code: string) => string): string => {
 export const stripFuturePrefixes = (formula: string): string =>
   formula.indexOf('_xl') < 0 ? formula : mapOutside(formula, (s) => s.replace(/_xl(?:fn|ws|pm)\./gi, ''));
 
-// Functions added after Excel 2007, which Excel stores with the "_xlfn." prefix.
+// Functions added after the first edition of the format, which files store with the "_xlfn." prefix.
 const FUTURE = new Set(`ACOT ACOTH AGGREGATE ANCHORARRAY ARABIC ARRAYTOTEXT BASE BETA.DIST BETA.INV BINOM.DIST BINOM.DIST.RANGE
 BINOM.INV BITAND BITLSHIFT BITOR BITRSHIFT BITXOR BYCOL BYROW CEILING.MATH CEILING.PRECISE CHISQ.DIST CHISQ.DIST.RT
 CHISQ.INV CHISQ.INV.RT CHISQ.TEST CHOOSECOLS CHOOSEROWS COMBINA CONCAT CONFIDENCE.NORM CONFIDENCE.T COT COTH
@@ -77,7 +77,7 @@ const callArgs = (s: string, open: number): { args: [number, number][]; close: n
   return { args, close: i < 0 ? s.length : i };
 };
 
-/** Adds "_xlfn." / "_xlfn._xlws." prefixes, and "_xlpm." on LET/LAMBDA parameter names, as Excel stores them. */
+/** Adds "_xlfn." / "_xlfn._xlws." prefixes, and "_xlpm." on LET/LAMBDA parameter names, as the file format stores them. */
 export const addFuturePrefixes = (formula: string): string => {
   const params = new Set<string>();
   const code = formula;

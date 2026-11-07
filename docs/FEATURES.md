@@ -6,7 +6,7 @@
 
 | Feature | State | Notes |
 |---|---|---|
-| Worksheet functions | Done | 504 functions in 13 categories, checked against published examples and an independent spreadsheet |
+| Worksheet functions | Done | 510 functions in 13 categories; see [functions.md](functions.md), checked against published examples and an independent spreadsheet |
 | Dynamic arrays and spilling, `#` spill references, `#SPILL!` | Done | |
 | `LET`, `LAMBDA`, named LAMBDA functions, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`, `MAKEARRAY`, `ISOMITTED` | Done | |
 | `GROUPBY`, `PIVOTBY` | Basic | One aggregation function at a time |
@@ -60,10 +60,16 @@
 | Goal Seek, data tables, descriptive statistics | Done | |
 | Subtotals and outline grouping | Basic | Collapse by hiding rows |
 | PivotTables | Basic | Static summary, or a live `PIVOTBY` formula |
-| Charts: column, bar, line, area, pie, doughnut, scatter, radar, stacked, 100% stacked, combo | Done | No 3D, bubble or stock charts yet |
+| Charts: 36 types, including column, bar, line, area, pie, doughnut, scatter, bubble, radar, histogram, box and whisker, waterfall, funnel, treemap, sunburst, Pareto and combo | Done | Titles, axes, legends and data labels; no 3D, stock charts or trendlines yet |
+| Insights: suggested charts and summaries for a range | Done | |
 | Pictures | Done | |
-| Notes and hyperlinks | Done | |
-| Sheet protection | Basic | Stops accidental edits; it isn't encryption |
+| Notes, threaded comments with replies, and hyperlinks | Done | |
+| Shapes, text boxes and ink drawing | Done | |
+| Cell checkboxes | Done | |
+| Spelling check and accessibility check | Done | English dictionary |
+| Protected ranges that stay editable | Done | |
+| Scripts | Done | Run in a sandboxed worker without network access; saved in the file |
+| Sheet protection | Done | Password hash compatible with other apps; it stops edits but isn't encryption |
 
 ## Files and platforms
 
@@ -76,6 +82,8 @@
 | Windows, macOS, Linux installers | Done | Built by GitHub Actions on each release |
 | iPad home-screen app and web | Done | Works offline after the first visit; keeps unsaved work |
 | Dark mode, touch-friendly controls | Done | |
-| Pivot caches, slicers, sparklines, threaded comments, shapes other than pictures | Not yet | Dropped when a file is opened |
+| Pivot caches, slicers, sparklines | Not yet | Dropped when a file is opened |
+| Page setup dialog, page breaks, print area | Not yet | See [ROADMAP.md](../ROADMAP.md) |
+| Version history | Not yet | |
 | Right-to-left sheets | Basic | Setting is kept; the grid still draws left to right |
 | Interface languages other than English | Not yet | |

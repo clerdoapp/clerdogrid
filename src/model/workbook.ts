@@ -97,8 +97,48 @@ export interface TableDef {
   bandedCols?: boolean;
 }
 
-export type ChartType = 'column' | 'bar' | 'line' | 'area' | 'pie' | 'doughnut' | 'scatter' | 'radar' | 'stackedColumn' | 'stackedBar' | 'percentColumn' | 'stackedArea' | 'combo';
-export interface ChartSeries { name?: string; values: string; categories?: string; color?: string; type?: 'column' | 'line' }
+export type ChartType =
+  | 'column' | 'stackedColumn' | 'percentColumn'
+  | 'bar' | 'stackedBar' | 'percentBar'
+  | 'line' | 'stackedLine' | 'percentLine' | 'lineMarkers' | 'stackedLineMarkers' | 'percentLineMarkers'
+  | 'area' | 'stackedArea' | 'percentArea'
+  | 'pie' | 'doughnut'
+  | 'scatter' | 'scatterSmoothMarkers' | 'scatterSmooth' | 'scatterLinesMarkers' | 'scatterLines' | 'bubble'
+  | 'histogram' | 'pareto' | 'boxWhisker'
+  | 'combo' | 'comboSecondary' | 'comboAreaColumn'
+  | 'treemap' | 'sunburst'
+  | 'waterfall' | 'radar' | 'radarMarkers' | 'radarFilled' | 'funnel';
+export interface ChartSeries {
+  name?: string; values: string; categories?: string; color?: string;
+  /** How a series is drawn in a combo chart. */
+  type?: 'column' | 'line' | 'area';
+  /** Bubble sizes. */
+  sizes?: string;
+}
+/** Per-chart settings. Every field is optional; a missing field means the automatic choice. */
+export interface ChartOptions {
+  /** Series indexes measured on a second value axis at the right. */
+  secondary?: number[];
+  /** Histogram bins: a fixed number of bins, or a fixed bin width. */
+  binCount?: number;
+  binWidth?: number;
+  /** Waterfall: category indexes drawn as totals. */
+  totals?: number[];
+  /** What data labels show on pie, doughnut, funnel and treemap charts. */
+  labelMode?: 'value' | 'percent' | 'both';
+  /** False hides the value gridlines. */
+  gridlines?: boolean;
+  /** Fixed value-axis bounds. */
+  min?: number;
+  max?: number;
+  /** Number format for the value axis and labels. */
+  numFmt?: string;
+  /** Colour set (0 is the default set). */
+  style?: number;
+  /** Box and whisker: hide the mean marker or the outlier points. */
+  hideMean?: boolean;
+  hideOutliers?: boolean;
+}
 export interface Chart {
   id: string;
   type: ChartType;
@@ -107,11 +147,14 @@ export interface Chart {
   /** Position over the grid: top-left cell plus pixel offsets, and size in pixels. */
   anchor: { row: number; col: number; dx: number; dy: number; width: number; height: number };
   legend?: 'right' | 'bottom' | 'top' | 'left' | 'none';
-  axisTitles?: { x?: string; y?: string };
+  axisTitles?: { x?: string; y?: string; y2?: string };
   dataLabels?: boolean;
+  options?: ChartOptions;
+  /** Alternative text for screen readers. */
+  alt?: string;
 }
 
-export interface Picture { id: string; data: Uint8Array; mime: string; anchor: Chart['anchor'] }
+export interface Picture { id: string; data: Uint8Array; mime: string; anchor: Chart['anchor']; alt?: string }
 
 export interface Note { author?: string; text: string }
 
@@ -130,6 +173,7 @@ export interface Shape {
   font?: CellStyle['font'];
   align?: 'left' | 'center' | 'right';
   rotation?: number;
+  alt?: string;
 }
 
 /** A pen, highlighter or marker stroke drawn over the sheet, in sheet pixels at 100% zoom. */

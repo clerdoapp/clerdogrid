@@ -12,6 +12,7 @@ import type { GridStore } from '../app/store';
 import { prettyKeys } from './keys';
 import { FONT_NAMES } from './fonts';
 import { panelSections } from './panelRegistry';
+import { QUICK_CHARTS } from './charts/chartTypes';
 
 const S = 1.9;
 
@@ -96,6 +97,18 @@ const NumberFormatPicker = ({ store }: { store: GridStore }) => {
   );
 };
 
+const CURRENCIES: [string, string][] = [['$', 'Dollar ($)'], ['€', 'Euro (€)'], ['£', 'Pound (£)'], ['¥', 'Yen (¥)'], ['SAR', 'Saudi riyal (SAR)'], ['AED', 'UAE dirham (AED)'], ['₹', 'Rupee (₹)'], ['CHF', 'Swiss franc (CHF)']];
+const accountingFor = (sym: string): string => {
+  const s = /^[A-Z]{3}$/.test(sym) ? `"${sym} "` : `"${sym}"`;
+  return `_(${s}* #,##0.00_);_(${s}* \\(#,##0.00\\);_(${s}* "-"??_);_(@_)`;
+};
+const CurrencyPicker = ({ store }: { store: GridStore }) => (
+  <select aria-label="Accounting currency" className="wide" value="" onChange={(e) => { if (e.target.value) run(store, 'number.format', accountingFor(e.target.value)); }}>
+    <option value="">Accounting currency…</option>
+    {CURRENCIES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+  </select>
+);
+
 const panels: Record<string, (s: GridStore) => ReactNode> = {
   home: (s) => (<>
     <Group_ title="Clipboard"><Row>
@@ -127,6 +140,7 @@ const panels: Record<string, (s: GridStore) => ReactNode> = {
         <Btn store={s} id="number.moreDecimals" icon={ChevronsRight} iconOnly /><Btn store={s} id="number.lessDecimals" icon={ChevronsLeft} iconOnly />
         <Btn store={s} id="number.shortDate" icon={CalendarDays} iconOnly /><Btn store={s} id="number.time" icon={Clock} iconOnly />
       </Row>
+      <CurrencyPicker store={s} />
     </Group_>
     <Group_ title="Styles"><List>
       <Btn store={s} id="insert.conditional" icon={Sparkles} label="Conditional formatting…" /><Btn store={s} id="cells.formatTable" icon={Table2} label="Format as table…" /><Btn store={s} id="cells.styles" icon={Palette} label="Cell styles…" />
@@ -216,7 +230,7 @@ const BorderIcon = ({ kind }: { kind: string }) => {
 
 const ChartQuick = ({ store }: { store: GridStore }) => (
   <div className="chartquick">
-    {([['column', 'Column'], ['bar', 'Bar'], ['line', 'Line'], ['area', 'Area'], ['pie', 'Pie'], ['doughnut', 'Doughnut'], ['scatter', 'Scatter'], ['stackedColumn', 'Stacked'], ['radar', 'Radar'], ['combo', 'Combo']] as const).map(([t, l]) => (
+    {QUICK_CHARTS.map(([t, l]) => (
       <button key={t} className="tool" onClick={() => run(store, 'insert.chart', { type: t, quick: true })}>{l}</button>
     ))}
   </div>

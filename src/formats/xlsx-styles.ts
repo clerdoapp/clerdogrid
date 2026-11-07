@@ -46,7 +46,7 @@ const hlsToRgb = (h: number, l: number, s: number): [number, number, number] => 
 };
 const hex2 = (x: number): string => Math.round(Math.max(0, Math.min(1, x)) * 255).toString(16).padStart(2, '0').toUpperCase();
 
-/** Excel's tint: darken (tint < 0) or lighten (tint > 0) the HLS luminance. */
+/** spreadsheet's tint: darken (tint < 0) or lighten (tint > 0) the HLS luminance. */
 export const applyTint = (hex: string, tint: number): string => {
   if (!tint) return hex;
   const n = parseInt(hex.slice(1, 7), 16);

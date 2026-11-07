@@ -12,6 +12,7 @@ import { readColor, readFont, readStyles, readTheme } from './xlsx-styles';
 import { INDEXED_COLORS } from './numfmt';
 import { readAnchor, readChart, shownColWidth } from './xlsx-chart';
 import { shiftFormula, stripFuturePrefixes } from './formula-xml';
+import { OBJECTS_REL_SHORT, applyObjectsPart, readProtectedRanges, readShape } from './xlsx-objects';
 
 const MAX_PART = 1 << 30;
 const MAX_TOTAL = 2 ** 31;
@@ -356,6 +357,8 @@ const readDrawing = (path: string, sheet: Sheet, ctx: Ctx): void => {
       const rel = rels.get(attr(chartRef, 'id') ?? '');
       const cx = rel && !rel.external ? ctx.pkg.xml(rel.target) : undefined;
       const chart = cx && readChart(cx, `chart${sheet.charts.length + 1}`, anchor);
+      const descr = attr(find(frame, 'cNvPr'), 'descr');
+      if (chart && descr) chart.alt = descr;
       if (chart) sheet.charts.push(chart);
       continue;
     }
@@ -367,9 +370,13 @@ const readDrawing = (path: string, sheet: Sheet, ctx: Ctx): void => {
       if (rel && data) {
         const ext = rel.target.slice(rel.target.lastIndexOf('.') + 1).toLowerCase();
         const p: Picture = { id: `picture${sheet.pictures.length + 1}`, data, mime: MIME[ext] ?? 'application/octet-stream', anchor };
+        const descr = attr(find(pic, 'cNvPr'), 'descr');
+        if (descr) p.alt = descr;
         sheet.pictures.push(p);
       }
     }
+    const sp = kid(a, 'sp');
+    if (sp) (sheet.shapes ??= []).push(readShape(sp, anchor, `shape${(sheet.shapes?.length ?? 0) + 1}`));
   }
 };
 
@@ -535,6 +542,7 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
     for (let i = r.r1; i <= r.r2 && n < 10000; i++) for (let j = r.c1; j <= r.c2 && n < 10000; j++, n++) sheet.hyperlinks.set(cellKey(i, j), target);
   }
 
+  readProtectedRanges(ws, sheet);
   const prot = kid(ws, 'sheetProtection');
   if (prot && boolAttr(prot, 'sheet')) {
     const p: NonNullable<Sheet['protection']> = { sheet: true };
@@ -675,6 +683,21 @@ export const readXlsx = (data: Uint8Array): Workbook => {
     if (created) props.created = created;
     if (modified) props.modified = modified;
     if (Object.keys(props).length) wb.props = props;
+  }
+
+  const objRel = relOf(OBJECTS_REL_SHORT);
+  if (objRel && !objRel.external) applyObjectsPart(wb, pkg.text(objRel.target));
+
+  // Saved scripts are only stored as text here; they never run when a file opens.
+  const scriptsRel = relOf('scripts');
+  const scriptsX = scriptsRel ? pkg.xml(scriptsRel.target) : undefined;
+  if (scriptsX?.name === 'scripts') {
+    const list = kids(scriptsX, 'script').slice(0, 500).map((n, i) => ({
+      id: (attr(n, 'id') ?? '').replace(/[^\w-]/g, '').slice(0, 64) || `s${i + 1}`,
+      name: (attr(n, 'name') ?? '').slice(0, 200) || `Script ${i + 1}`,
+      code: n.text.slice(0, 1_000_000),
+    }));
+    if (list.length) wb.scripts = list;
   }
 
   const extra = new Map<string, Uint8Array>();

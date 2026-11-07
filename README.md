@@ -12,19 +12,51 @@ Calculate, analyse and chart data, with your files staying on your own device.<b
 <a href="LICENSE-MIT">MIT</a> / <a href="LICENSE-APACHE">Apache-2.0</a>
 </p>
 
+<p align="center"><img src="docs/images/editor.png" alt="ClerdoGrid with a sales workbook open" width="900"></p>
+
 ## What it does
 
-- **Calculate:** about 500 worksheet functions across math, statistics, text, dates, lookup, finance, engineering, information and databases, with the same results, error values and edge cases people expect from a spreadsheet.
+- **Calculate:** 510 worksheet functions across math, statistics, text, dates, lookup, finance, engineering, information and databases, with the results, error values and edge cases people expect from a spreadsheet. The full list is in [docs/functions.md](docs/functions.md).
 - **Modern formulas:** dynamic arrays that spill, `LET`, `LAMBDA` with named functions, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`, `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `SEQUENCE`, `XLOOKUP`, `XMATCH`, `GROUPBY`, `PIVOTBY`, `TEXTSPLIT`, regular expressions, array constants and legacy array formulas.
 - **A real calculation engine:** a dependency graph that only recalculates what changed, volatile functions, circular reference detection, iterative calculation, defined names (workbook and sheet scope), tables with structured references, 3D references across sheets and `INDIRECT`/`OFFSET`.
-- **Edit fast:** typing with smart number, date, percent and currency recognition, formula autocomplete with argument hints and colored reference highlighting, point-and-click references, F4 to cycle `$`, the fill handle with series for numbers, dates, months, weekdays and numbered text, Flash Fill, Ctrl+Enter to fill a selection, copy and paste with other apps (text and formatted tables), paste special, drag to move, undo and redo.
-- **Format:** fonts, sizes, colors, fills and gradients, every border style, alignment, wrap, rotation, indent, merge, custom number formats with sections, colors and conditions, cell styles and table styles.
-- **Organise:** insert and delete rows, columns and cells with every reference kept right, hide, group, freeze panes, multiple sheets with colors, sort on several levels, filters, remove duplicates, text to columns, data validation with drop-down lists, find and replace, go to special.
-- **Analyse:** conditional formatting (color scales, data bars, icon sets, top and bottom, duplicates, formulas), charts (column, bar, line, area, pie, doughnut, scatter, radar, stacked and combo), PivotTables, subtotals, Goal Seek, data tables and descriptive statistics.
-- **Files:** opens and saves `.xlsx` (styles, formulas, merges, rules, validation, tables, notes, charts and pictures), opens `.xlsm` and `.xltx`, and opens and exports `.csv`. Print or save as PDF.
+- **Edit fast:** smart number, date, percent and currency recognition, formula autocomplete with argument hints and colored references, point-and-click references, F4 to cycle `$`, the fill handle with series, Flash Fill, Ctrl+Enter to fill a selection, copy and paste with other apps, paste special, drag to move, undo and redo.
+- **Format:** fonts, colors, fills and gradients, every border style, alignment, wrap, rotation, merge, custom number formats, cell styles, table styles and cell checkboxes.
+- **Organise:** insert and delete rows, columns and cells with every reference kept right, hide, group, freeze panes, sheet colors, multi-level sort, filters, remove duplicates, text to columns, drop-down lists, find and replace, go to special.
+- **Analyse:** conditional formatting, 36 chart types (column, bar, line, area, pie, doughnut, scatter, bubble, radar, histogram, box and whisker, waterfall, funnel, treemap, sunburst, Pareto, combo and more), PivotTables, subtotals, Goal Seek, data tables, descriptive statistics and **Insights**, which suggests charts and summaries for your data.
+- **Review:** threaded comments with replies, notes, spelling check, an accessibility check, protected sheets and ranges that stay editable.
+- **Insert and draw:** pictures, shapes and text boxes, and pen or highlighter ink on the sheet.
+- **Automate:** write scripts in TypeScript-style JavaScript that read and change the workbook. Scripts run in a locked-down worker with no network access and are saved inside the file.
+- **Files:** opens and saves `.xlsx` (styles, formulas, merges, rules, validation, tables, comments, charts, pictures and shapes), opens `.xlsm` and `.xltx` with macros kept but never run, and opens and exports `.csv`. Print or save as PDF. Details in [docs/file-formats.md](docs/file-formats.md).
 - **Private:** no account, no server, no tracking. Formulas never reach the internet.
 
-The full list, with what's finished and what's basic, is in [docs/FEATURES.md](docs/FEATURES.md).
+<table>
+<tr>
+<td><img src="docs/images/charts.png" alt="Charts"></td>
+<td><img src="docs/images/formatting.png" alt="Conditional formatting"></td>
+</tr>
+<tr>
+<td align="center">Charts</td>
+<td align="center">Formatting</td>
+</tr>
+<tr>
+<td><img src="docs/images/scripts.png" alt="Scripts"></td>
+<td><img src="docs/images/insights.png" alt="Insights"></td>
+</tr>
+<tr>
+<td align="center">Scripts</td>
+<td align="center">Insights</td>
+</tr>
+<tr>
+<td><img src="docs/images/dark.png" alt="Dark mode"></td>
+<td><img src="docs/images/ipad.png" alt="ClerdoGrid on iPad"></td>
+</tr>
+<tr>
+<td align="center">Dark mode</td>
+<td align="center">iPad</td>
+</tr>
+</table>
+
+The full list, with what's finished and what's basic, is in [docs/FEATURES.md](docs/FEATURES.md). What's next is in [ROADMAP.md](ROADMAP.md). Sample workbooks are in [examples/](examples/).
 
 ## Download
 
@@ -52,9 +84,11 @@ npm install
 npm run dev     # web app at http://localhost:5173
 npm test
 npm run dist    # desktop installers for this system
+npm run examples        # rebuild the sample workbooks
+npm run docs:functions  # rebuild docs/functions.md
 ```
 
-More in [docs/development.md](docs/development.md) and [docs/architecture.md](docs/architecture.md).
+More in [docs/development.md](docs/development.md), [docs/architecture.md](docs/architecture.md) and [docs/releasing.md](docs/releasing.md).
 
 ## Contributing
 

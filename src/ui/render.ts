@@ -253,7 +253,8 @@ export class SheetRenderer {
         const m = mergeAt(r, c) ?? sheet.merges.find((mm) => inRange(mm, r, c));
         if (m && (m.r1 !== r || m.c1 !== c)) { if (!(r === p.r1 && c === Math.max(p.c1, m.c1))) continue; }
         const anchorR = m ? m.r1 : r, anchorC = m ? m.c1 : c;
-        if (!hasContent(anchorR, anchorC) && !store.sheet.notes.has(cellKey(anchorR, anchorC))) continue;
+        const ck = cellKey(anchorR, anchorC);
+        if (!hasContent(anchorR, anchorC) && !store.sheet.notes.has(ck) && !store.sheet.comments?.has(ck)) continue;
         if (ov.editing && ov.editing.row === anchorR && ov.editing.col === anchorC) continue;
         const d = get(anchorR, anchorC);
         const rect = m ? rectIn(p, vp, m) : { x: colX(c), y, w, h };
@@ -263,6 +264,12 @@ export class SheetRenderer {
           ctx.fillStyle = '#d93025';
           ctx.beginPath(); ctx.moveTo(rect.x + rect.w - 7 * zoom, rect.y + 1); ctx.lineTo(rect.x + rect.w - 1, rect.y + 1); ctx.lineTo(rect.x + rect.w - 1, rect.y + 7 * zoom); ctx.fill();
         }
+        if (store.sheet.comments?.has(ck)) {
+          // Comment threads: a violet corner, top-left so it never hides a note's red corner.
+          ctx.fillStyle = store.sheet.comments.get(ck)!.resolved ? theme.headerInk : theme.dark ? '#b197fc' : '#7048e8';
+          ctx.beginPath(); ctx.moveTo(rect.x + 1, rect.y + 1); ctx.lineTo(rect.x + 8 * zoom, rect.y + 1); ctx.lineTo(rect.x + 1, rect.y + 8 * zoom); ctx.fill();
+        }
+        if (d.style.checkbox && typeof d.v === 'boolean' && !ov.showFormulas) { this.drawCheckbox(rect, d.v, zoom, theme); continue; }
         if (!d.text) continue;
         this.drawText(store, vp, p, d, rect, anchorR, anchorC, !!m, hasContent, theme, d.cf?.icon ? 18 * zoom : 0);
       }
@@ -446,6 +453,23 @@ export class SheetRenderer {
       out.push(line);
     }
     return out;
+  }
+
+  private drawCheckbox(rect: { x: number; y: number; w: number; h: number }, on: boolean, zoom: number, theme: Theme): void {
+    const ctx = this.ctx;
+    const size = Math.max(8, Math.min(14 * zoom, rect.h - 4, rect.w - 4));
+    const x = Math.round(rect.x + (rect.w - size) / 2) + 0.5, y = Math.round(rect.y + (rect.h - size) / 2) + 0.5;
+    ctx.save();
+    ctx.lineWidth = Math.max(1, 1.4 * zoom);
+    ctx.beginPath(); ctx.roundRect(x, y, size, size, 2.5 * zoom);
+    if (on) { ctx.fillStyle = theme.accent; ctx.fill(); }
+    else { ctx.fillStyle = theme.bg; ctx.fill(); ctx.strokeStyle = theme.dark ? '#7c8c83' : '#6b7a71'; ctx.stroke(); }
+    if (on) {
+      ctx.strokeStyle = theme.dark ? '#06200f' : '#ffffff';
+      ctx.lineWidth = Math.max(1.4, 1.9 * zoom); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(x + size * 0.24, y + size * 0.52); ctx.lineTo(x + size * 0.43, y + size * 0.7); ctx.lineTo(x + size * 0.77, y + size * 0.32); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private drawBar(rect: { x: number; y: number; w: number; h: number }, bar: NonNullable<CfResult['bar']>, zoom: number): void {

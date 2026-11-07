@@ -35,7 +35,7 @@ self.addEventListener('fetch', (e) => {
 const csp = (): Plugin => ({
   name: 'clerdogrid-csp',
   apply: 'build',
-  transformIndexHtml: (html) => html.replace('<title>', `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; connect-src 'self' blob: data:; worker-src 'self'; frame-src 'self' about: blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />\n    <title>`),
+  transformIndexHtml: (html) => html.replace('<title>', `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; connect-src 'self' blob: data:; worker-src 'self' blob:; frame-src 'self' about: blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />\n    <title>`),
 });
 
 export default defineConfig({
