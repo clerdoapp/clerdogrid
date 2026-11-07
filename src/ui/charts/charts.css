@@ -1,0 +1,68 @@
+:root {
+  --chart-1: #12a565; --chart-2: #2f6fdf; --chart-3: #f08c00; --chart-4: #d6336c; --chart-5: #7048e8;
+  --chart-6: #0b8fb3; --chart-7: #e03131; --chart-8: #74a10d; --chart-9: #5c677d; --chart-10: #c2620a;
+  --chart-bg: var(--sheet); --chart-ink: #232838; --chart-muted: #687086; --chart-grid: #e8eaf0; --chart-axis: #a9afbf;
+  --chart-hover: rgba(18, 165, 101, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --chart-1: #6b8aff; --chart-2: #ffb340; --chart-3: #3dd6a4; --chart-4: #f06595; --chart-5: #9f86ff;
+    --chart-6: #3bc9db; --chart-7: #ff6b6b; --chart-8: #a9e34b; --chart-9: #a0a9bd; --chart-10: #ff9f4a;
+    --chart-ink: #e4e7f0; --chart-muted: #9aa2b6; --chart-grid: #2c3140; --chart-axis: #586078; --chart-hover: rgba(107, 138, 255, 0.12);
+  }
+}
+:root[data-theme='dark'] {
+  --chart-1: #6b8aff; --chart-2: #ffb340; --chart-3: #3dd6a4; --chart-4: #f06595; --chart-5: #9f86ff;
+  --chart-6: #3bc9db; --chart-7: #ff6b6b; --chart-8: #a9e34b; --chart-9: #a0a9bd; --chart-10: #ff9f4a;
+  --chart-ink: #e4e7f0; --chart-muted: #9aa2b6; --chart-grid: #2c3140; --chart-axis: #586078; --chart-hover: rgba(107, 138, 255, 0.12);
+}
+
+.chartbox { touch-action: none; overflow: visible; outline: none; cursor: default; user-select: none; -webkit-user-select: none; }
+.chartbox.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); cursor: move; }
+.chartbox text { font-family: 'Hanken Grotesk', system-ui, sans-serif; }
+.chartsvg { position: relative; width: 100%; height: 100%; }
+.chartsvg svg { display: block; }
+.charttip { position: absolute; z-index: 3; pointer-events: none; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 6px 9px; font-size: 12px; min-width: 110px; max-width: 240px; white-space: nowrap; }
+.charttip .tiptitle { font-weight: 600; margin-bottom: 3px; overflow: hidden; text-overflow: ellipsis; }
+.charttip .tiprow { display: flex; align-items: center; gap: 6px; }
+.charttip .tiprow i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.charttip .tiprow span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+.charttip .tiprow b { margin-inline-start: auto; font-weight: 600; font-variant-numeric: tabular-nums; padding-inline-start: 8px; }
+.chandle { position: absolute; width: 12px; height: 12px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); z-index: 2; touch-action: none; }
+.chandle::after { content: ''; position: absolute; inset: -10px; }
+.chandle.nw { left: -7px; top: -7px; cursor: nwse-resize; }
+.chandle.ne { right: -7px; top: -7px; cursor: nesw-resize; }
+.chandle.sw { left: -7px; bottom: -7px; cursor: nesw-resize; }
+.chandle.se { right: -7px; bottom: -7px; cursor: nwse-resize; }
+.chartedit { position: absolute; top: 6px; right: 6px; z-index: 2; display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 2px; box-shadow: var(--shadow); }
+@media (pointer: coarse) { .chandle { width: 18px; height: 18px; } .chandle.nw, .chandle.sw { left: -10px; } .chandle.ne, .chandle.se { right: -10px; } .chandle.nw, .chandle.ne { top: -10px; } .chandle.sw, .chandle.se { bottom: -10px; } }
+
+/* Dialog parts */
+.charttypes { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; }
+.charttype { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 10px; border: 1px solid var(--line); background: var(--sheet); text-align: start; font-size: 12px; }
+.charttype:hover { border-color: var(--accent); }
+.charttype.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--accent); font-weight: 600; }
+.charttype .thumb { height: 64px; pointer-events: none; }
+.chartpreview { height: 230px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); overflow: hidden; }
+.chartdlg { display: grid; grid-template-columns: 1fr 260px; gap: 14px; }
+@media (max-width: 700px) { .chartdlg { grid-template-columns: 1fr; } }
+.seclabel { font-size: 12px; font-weight: 600; color: var(--muted); margin: 2px 0 -2px; }
+.checkrow { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.segmented button { padding: 5px 10px; font-size: 12.5px; min-height: 30px; }
+.segmented button.on { background: var(--accent); color: var(--on-accent); }
+.tplgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
+.tpl { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--sheet); text-align: start; min-height: 104px; }
+.tpl:hover { border-color: var(--accent); }
+.tpl svg { color: var(--accent); }
+.tpl b { font-size: 13.5px; font-weight: 600; }
+.tpl span { font-size: 12px; color: var(--muted); }
+.csvprev { overflow: auto; max-height: 220px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); }
+.csvprev table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.csvprev td { border: 1px solid var(--gridline); padding: 3px 7px; white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.csvprev tr.hdr td { font-weight: 700; background: var(--hdr); }
+.filepick { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px dashed var(--line); border-radius: 10px; font-size: 13px; }
+.filepick button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.checks { display: flex; flex-direction: column; gap: 4px; max-height: 160px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-size: 13px; }
+.checks label { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.imgprev { max-width: 100%; max-height: 200px; border-radius: 8px; border: 1px solid var(--line); align-self: center; }

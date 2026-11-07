@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.clerdo.clerdogrid</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <name>ClerdoGrid</name>
+  <summary>Free spreadsheet app</summary>
+  <developer id="app.clerdo"><name>Clerdo</name></developer>
+  <description>
+    <p>Calculate, analyse and chart data. ClerdoGrid opens and saves .xlsx and .csv workbooks and works offline.</p>
+    <ul>
+      <li>About 500 worksheet functions, dynamic arrays, LET and LAMBDA</li>
+      <li>Charts, conditional formatting, tables, filters, sorting and data validation</li>
+      <li>Works offline, with no account and no tracking</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">app.clerdo.clerdogrid.desktop</launchable>
+  <url type="homepage">https://clerdo.app</url>
+  <url type="bugtracker">https://github.com/clerdoapp/clerdogrid/issues</url>
+  <url type="vcs-browser">https://github.com/clerdoapp/clerdogrid</url>
+  <content_rating type="oars-1.1"/>
+  <categories><category>Office</category><category>Spreadsheet</category></categories>
+  <provides>
+    <binary>clerdogrid</binary>
+    <mediatype>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</mediatype>
+    <mediatype>text/csv</mediatype>
+  </provides>
+  <releases><release version="0.5.0" date="2026-11-07"><description><p>First release.</p></description></release></releases>
+</component>

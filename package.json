@@ -1,0 +1,121 @@
+{
+  "name": "clerdogrid",
+  "productName": "ClerdoGrid",
+  "version": "0.5.0",
+  "description": "Free, open-source spreadsheet app by Clerdo",
+  "private": true,
+  "type": "module",
+  "license": "MIT OR Apache-2.0",
+  "author": {
+    "name": "Clerdo",
+    "email": "support@clerdo.app"
+  },
+  "main": "dist-electron/main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "electron:compile": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
+    "dist": "npm run build && npm run electron:compile && electron-builder --publish never"
+  },
+  "dependencies": {
+    "@fontsource/arimo": "^5.0.0",
+    "@fontsource/caladea": "^5.0.0",
+    "@fontsource/carlito": "^5.0.0",
+    "@fontsource/cousine": "^5.0.0",
+    "@fontsource/hanken-grotesk": "^5.0.0",
+    "@fontsource/inter": "^5.3.0",
+    "@fontsource/lato": "^5.3.0",
+    "@fontsource/montserrat": "^5.3.0",
+    "@fontsource/noto-naskh-arabic": "^5.0.0",
+    "@fontsource/open-sans": "^5.3.0",
+    "@fontsource/roboto": "^5.3.0",
+    "@fontsource/roboto-mono": "^5.3.0",
+    "@fontsource/tinos": "^5.0.0",
+    "fflate": "^0.8.2",
+    "lucide-react": "^0.460.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
+  },
+  "build": {
+    "appId": "app.clerdo.clerdogrid",
+    "productName": "ClerdoGrid",
+    "directories": {
+      "output": "release",
+      "buildResources": "brand/build"
+    },
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "package.json"
+    ],
+    "fileAssociations": [
+      { "ext": "xlsx", "name": "Workbook", "role": "Editor", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+      { "ext": "xlsm", "name": "Workbook", "role": "Editor", "mimeType": "application/vnd.ms-excel.sheet.macroEnabled.12" },
+      { "ext": "xltx", "name": "Workbook template", "role": "Editor", "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.template" },
+      { "ext": "csv", "name": "Comma-separated values", "role": "Editor", "mimeType": "text/csv" },
+      { "ext": "tsv", "name": "Tab-separated values", "role": "Editor", "mimeType": "text/tab-separated-values" }
+    ],
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["universal"] },
+        { "target": "zip", "arch": ["universal"] }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "assets/app-icon/clerdogrid.icns"
+    },
+    "win": {
+      "target": [
+        { "target": "msi", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] },
+        { "target": "zip", "arch": ["x64"] }
+      ],
+      "icon": "assets/app-icon/clerdogrid.ico"
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] },
+        { "target": "rpm", "arch": ["x64"] },
+        { "target": "tar.gz", "arch": ["x64"] }
+      ],
+      "category": "Office",
+      "maintainer": "Clerdo",
+      "icon": "assets/app-icon/clerdogrid-1024.png",
+      "synopsis": "Free, open-source spreadsheet app",
+      "description": "Calculate, analyse and chart data. Opens and saves .xlsx and .csv.",
+      "desktop": {
+        "Name": "ClerdoGrid",
+        "GenericName": "Spreadsheet",
+        "Comment": "Calculate, analyse and chart data",
+        "Keywords": "spreadsheet;xlsx;csv;table;formula;chart;calc;",
+        "StartupWMClass": "ClerdoGrid"
+      }
+    },
+    "artifactName": "clerdogrid-${version}-${os}-${arch}.${ext}",
+    "deb": { "artifactName": "clerdogrid-${version}-linux-amd64.deb" },
+    "rpm": { "artifactName": "clerdogrid-${version}-linux-x86_64.rpm" },
+    "publish": []
+  },
+  "homepage": "https://clerdo.app",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/clerdoapp/clerdogrid.git"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

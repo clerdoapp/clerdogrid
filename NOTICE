@@ -1,0 +1,9 @@
+ClerdoGrid
+Copyright (c) 2026 Clerdo.
+
+Bundled third-party material:
+- Lucide icons (lucide-react): ISC License.
+- React, fflate: MIT License.
+- Fonts (Carlito, Caladea, Arimo, Tinos, Cousine, Hanken Grotesk, Inter, Lato, Montserrat, Open Sans,
+  Roboto, Roboto Mono, Noto Naskh Arabic): SIL Open Font License 1.1 or Apache License 2.0, through
+  the @fontsource packages.

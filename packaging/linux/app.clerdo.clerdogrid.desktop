@@ -1,0 +1,19 @@
+[Desktop Entry]
+Type=Application
+Name=ClerdoGrid
+GenericName=Spreadsheet
+Comment=Calculate, analyse and chart data
+Exec=clerdogrid %F
+TryExec=clerdogrid
+Icon=app.clerdo.clerdogrid
+Terminal=false
+StartupNotify=true
+StartupWMClass=ClerdoGrid
+Categories=Office;Spreadsheet;
+Keywords=spreadsheet;xlsx;csv;table;formula;chart;calc;
+MimeType=application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;application/vnd.openxmlformats-officedocument.spreadsheetml.template;application/vnd.ms-excel.sheet.macroEnabled.12;text/csv;text/tab-separated-values;
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New window
+Exec=clerdogrid
