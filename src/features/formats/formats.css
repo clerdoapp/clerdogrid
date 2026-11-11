@@ -6,7 +6,7 @@
 .fmt-preview table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
 .fmt-preview th { position: sticky; top: 0; background: var(--panel-2); padding: 3px; border-bottom: 1px solid var(--line); }
 .fmt-preview th select { font-size: 12px; height: 26px; max-width: 130px; }
-.fmt-preview td { padding: 2px 8px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); white-space: pre; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.fmt-preview td { padding: 2px 8px; border-bottom: 1px solid var(--line); border-inline-end: 1px solid var(--line); white-space: pre; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 .fmt-preview td.fmt-skip { color: var(--muted); text-decoration: line-through; background: var(--panel-2); }
 .fmt-fixed { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: auto; max-height: 220px; background: var(--panel); cursor: crosshair; font-family: 'Cousine', 'Roboto Mono', ui-monospace, monospace; font-size: 12px; }
 .fmt-fixed pre { margin: 0; padding: 4px 6px; font: inherit; line-height: 18px; min-width: max-content; }

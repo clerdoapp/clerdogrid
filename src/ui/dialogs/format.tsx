@@ -231,7 +231,7 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
             <Check label={T('Superscript')} checked={f.vertAlign === 'superscript'} onChange={(v) => sub('font', { vertAlign: v ? 'superscript' : undefined })} />
             <Check label={T('Subscript')} checked={f.vertAlign === 'subscript'} onChange={(v) => sub('font', { vertAlign: v ? 'subscript' : undefined })} />
           </div>
-          <div className="preview b-fontprev"><span style={cssOf({ font: f })}>{T('The quick fox 123')}</span></div>
+          <div className="preview b-fontprev"><span dir="auto" style={cssOf({ font: f })}>{T('The quick fox 123')}</span></div>
         </div>
       )}
 

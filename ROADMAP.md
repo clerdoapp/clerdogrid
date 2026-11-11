@@ -1,12 +1,11 @@
 # Roadmap
 
-What's planned next, roughly in order. Ideas are welcome as [issues](https://github.com/clerdoapp/clerdogrid/issues).
+Everything on the feature list is built. These are the edges that are left, roughly in order. Ideas are welcome as [issues](https://github.com/clerdoapp/clerdogrid/issues).
 
-1. **Page layout and printing:** a page setup dialog (paper, margins, scaling, headers and footers, print titles), print area, page breaks with a page break preview, and direct PDF export on the desktop.
-2. **Version history:** local snapshots of a workbook you can browse and restore.
-3. **View tools:** focus cell, navigation pane, sheet views and full screen.
-4. **Workbook protection:** protect the sheet structure of a whole workbook.
-5. **Interface languages:** starting with Arabic (right to left) and the languages ClerdoDraft already has.
-6. **Live collaboration:** editing one workbook together, device to device, as in ClerdoDraft.
-7. **Extended chart parts:** writing histogram, waterfall, treemap and the other newer chart kinds in the extended chart format, so other apps show them natively.
-8. **More file types:** opening `.ods`, and older `.xls` files.
+1. **Binary workbooks (.xlsb) from other apps:** read their color scales, data bars, icon sets, PivotTables, slicers and sparklines, and write those too (ClerdoGrid keeps them in its own part today, so they survive its own round trips).
+2. **Older binary workbooks (.xls):** save 3D, stock and surface charts as themselves rather than the nearest simple chart; read charts in Excel 95 files and formulas in pre-97 worksheets (their values open today).
+3. **Distinct count in PivotTables** is shown as Count by other apps, because the standard way to store it needs a data model.
+4. **"Ask about your data":** understand number words ("top five") and more word forms in Slavic and Arabic.
+5. **Function names in other languages:** today they stay in English everywhere, which keeps formulas portable; descriptions and argument help are translated.
+6. **PDF text:** place marks on the right part of a ligature, and draw joined emoji sequences as one glyph in PDFs made by the command-line tool.
+7. **Working together** needs a direct connection or your own TURN relay; there is no Clerdo server in between.

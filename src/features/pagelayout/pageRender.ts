@@ -6,6 +6,7 @@ import { CfEvaluator, type CfResult } from '../../app/cf';
 import { inRange, type GridStore } from '../../app/store';
 import { shapePath } from '../objects/ShapeLayer';
 import { pageGrid, type Page, type Pagination } from './paginate';
+import { generalAlign } from '../../app/bidi';
 import { parsePathData, drawSvg, roundRectPath, type Painter, type PathCmd, type TextStyle } from './painter';
 import { fieldText, hfFor, parseHf, type HfContext, type HfFont, type HfRun } from './headerFooter';
 
@@ -74,14 +75,14 @@ export const renderPage = (p: Painter, ctx: RenderContext): void => {
         const f = formatValue(v, merged.numFmt ?? 'General', { date1904: store.wb.date1904 });
         text = f.text; color = f.color;
         if (f.fill !== undefined && f.fillAt !== undefined) repeat = { ch: f.fill, at: f.fillAt };
-        align = typeof v === 'number' ? 'right' : 'left';
-        if (f.align) align = f.align;
+        // Same rules as the grid: text by its own direction, numbers to the trailing side of the sheet.
+        align = generalAlign(v, f.text, rtl, !!merged.align?.rtl);
+        if (f.align && typeof v === 'number') align = rtl ? (f.align === 'right' ? 'left' : 'right') : f.align;
       }
     }
     const h = merged.align?.h;
     if (h === 'left' || h === 'right' || h === 'center') align = h;
     else if (h === 'centerContinuous' || h === 'distributed') align = 'center';
-    if (merged.align?.rtl && (h === undefined || h === 'general') && typeof v === 'string') align = 'right';
     const d: CellDraw = { text, color, align, fill: res?.fill ?? merged.fill?.color, style: merged, cf: res, v, repeat, rich: typeof v === 'string' && cell?.rich?.length ? cell.rich : undefined };
     draws.set(k, d);
     return d;
@@ -330,8 +331,7 @@ const drawText = (p: Painter, d: CellDraw, rect: { x: number; y: number; w: numb
     if (n > 0) { text = text.slice(0, d.repeat.at) + d.repeat.ch.repeat(n) + text.slice(d.repeat.at); tw = measure(text); }
   }
   if (st0.align?.h === 'fill' && text) { const unit = measure(text); if (unit > 0) { text = text.repeat(Math.max(1, Math.floor(avail / unit))); tw = measure(text); } }
-  let align = d.align;
-  if (rtl && !st0.align?.h) align = align === 'left' ? 'right' : align === 'right' ? 'left' : align;
+  const align = d.align;
   // Unwrapped text spills into empty neighbours on the same page.
   let clipX = rect.x, clipW = rect.w, x = rect.x, w = rect.w;
   if (!wrap && !merged && !isNum && tw > avail && st0.align?.rotation === undefined) {

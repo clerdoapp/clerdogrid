@@ -17,7 +17,7 @@ const Tool = ({ store, id, icon: Icon, label }: { store: GridStore; id: string; 
   const c = command(id);
   if (!c) return null;
   const on = c.active?.(store) ?? false;
-  const text = label ?? c.label;
+  const text = Tr(label ?? c.label);
   return (
     <button className={`tool${on ? ' on' : ''}`} disabled={c.enabled ? !c.enabled(store) : false} aria-pressed={c.active ? on : undefined} title={c.keys ? `${text} (${prettyKeys(c.keys)})` : text}
       onMouseDown={(e) => e.preventDefault()} onClick={() => run(store, id)}>
@@ -80,7 +80,7 @@ export const viewsSection = (s: GridStore) => (
 );
 
 export const sheetOptionsSection = (s: GridStore) => (
-  <List><Tool store={s} id="page.printGridlines" /><Tool store={s} id="page.printHeadings" /><Tool store={s} id="page.headerFooter" icon={PanelTop} /></List>
+  <List><Tool store={s} id="page.printGridlines" /><Tool store={s} id="page.printHeadings" /><Tool store={s} id="page.headerFooter" icon={PanelTop} /><Tool store={s} id="view.rtl" /></List>
 );
 
 export const printSection = (s: GridStore) => (

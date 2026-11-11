@@ -12,7 +12,7 @@ export const TopBar = ({ store }: { store: GridStore }) => {
   const state = f.dirty ? T('Not saved yet') : f.lastSaved ? T('Saved') : '';
   return (
     <header className="topbar">
-      <span className="wordmark">{T('Clerdo')}<b>{T('Grid')}</b></span>
+      <span className="wordmark">Clerdo<b>Grid</b></span>
       <input className="docname" aria-label={T('Workbook name')} value={f.name} spellCheck={false}
         onChange={(e) => { store.file = { ...f, name: e.target.value.replace(/[\\/:*?"<>|]/g, '') }; store.emit(); }} />
       <span className="savestate" role="status">{state}</span>

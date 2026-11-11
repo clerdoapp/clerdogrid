@@ -2,6 +2,7 @@ import { useEffect, useState, type MutableRefObject, type RefObject } from 'reac
 import { catalogByName, searchCatalog, type FnInfo } from '../engine/catalog';
 import type { GridStore } from '../app/store';
 import { formulaListSep } from '../app/locale';
+import { fnText } from './i18n/fn';
 
 /** File > Options: function autocomplete and argument tips. */
 export const assistPrefs = { autocomplete: true, tips: true };
@@ -106,7 +107,7 @@ export const FormulaAssist = ({ store, anchor, input, keyRef }: {
   return (
     <div className="assist" style={{ left: anchor.x, top: anchor.y }} onMouseDown={(e) => e.preventDefault()}>
       {call && !matches.length && !names.length && (
-        <div className="sigtip"><Signature info={call} arg={ctx.call!.arg} /><div className="about">{call.args[Math.min(ctx.call!.arg, call.args.length - 1)]?.about}</div></div>
+        <div className="sigtip"><Signature info={call} arg={ctx.call!.arg} /><div className="about">{fnText(call.args[Math.min(ctx.call!.arg, call.args.length - 1)]?.about)}</div></div>
       )}
       {(matches.length > 0 || names.length > 0) && (
         <div className="fnlist" role="listbox">
@@ -120,7 +121,7 @@ export const FormulaAssist = ({ store, anchor, input, keyRef }: {
               <span className="fx nm">N</span><b>{n.name}</b>
             </button>
           ))}
-          {sel < matches.length && <div className="fnabout">{matches[sel]!.about}</div>}
+          {sel < matches.length && <div className="fnabout">{fnText(matches[sel]!.about)}</div>}
         </div>
       )}
     </div>

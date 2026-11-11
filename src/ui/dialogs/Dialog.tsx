@@ -9,7 +9,7 @@ export interface DialogProps<T = unknown> {
 }
 
 /** Shared dialog frame: title bar, scrollable body, action row; Escape closes, Enter submits. */
-export const Dialog = ({ title, children, onOk, okLabel = 'OK', close, width = 420, footer, wide }: {
+export const Dialog = ({ title, children, onOk, okLabel, close, width = 420, footer, wide }: {
   title: string; children: ReactNode; onOk?: () => void | boolean; okLabel?: string; close: () => void; width?: number; footer?: ReactNode; wide?: boolean;
 }) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -27,7 +27,7 @@ export const Dialog = ({ title, children, onOk, okLabel = 'OK', close, width = 4
         }}>
         <div className="dhead"><h2>{Tr(title)}</h2><button className="ico" aria-label={T('Close')} onClick={close}><X size={16} strokeWidth={1.9} /></button></div>
         <div className="dbody">{children}</div>
-        <div className="dfoot">{footer}<div className="grow" />{onOk && <button onClick={close}>{T('Cancel')}</button>}<button className="primary" onClick={ok}>{onOk ? okLabel : T('Close')}</button></div>
+        <div className="dfoot">{footer}<div className="grow" />{onOk && <button onClick={close}>{T('Cancel')}</button>}<button className="primary" onClick={ok}>{onOk ? okLabel ?? T('OK') : T('Close')}</button></div>
       </div>
     </div>
   );

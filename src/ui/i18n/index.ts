@@ -165,7 +165,7 @@ const applyDocument = (): void => {
 export const setLang = async (code: string, opts: { persist?: boolean } = {}): Promise<void> => {
   const next = LANGS.some((l) => l.code === code) ? code : 'en';
   const first = read(LANG_KEY) === null;
-  const cat = await loadCatalog(next);
+  const [cat] = await Promise.all([loadCatalog(next), import('./fn').then((m) => m.loadFnText(next))]);
   lang = next;
   current = cat;
   if (opts.persist) {

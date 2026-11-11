@@ -20,7 +20,7 @@ import { N, T, Tr } from '../../ui/i18n';
 
 export interface TextImportData { file: PickedFile; mode: 'open' | 'insert' }
 
-const DELIMS: [string, string][] = [['\t', N('Tab')], [';', N('Semicolon')], [',', N('Comma')], [' ', N('Space')], ['|', N('Bar')]];
+const DELIMS: [string, string][] = [['\t', N('Tab')], [';', N('Semicolon')], [',', N('Comma')], [' ', N('Space')], ['|', N('Vertical bar')]];
 
 /** Starts fresh for every file (the dialog host keeps one component per dialog id). */
 export const TextImportDialog = (p: DialogProps<TextImportData>) => <TextImportBody key={`${p.data?.file.name}:${p.data?.file.data.length}`} {...p} />;

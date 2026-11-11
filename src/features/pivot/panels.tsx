@@ -19,7 +19,7 @@ export const Tool = ({ store, id, icon: Icon, label, arg }: { store: GridStore; 
   const c = command(id);
   if (!c) return null;
   const on = c.active?.(store) ?? false;
-  const text = label ?? c.label;
+  const text = Tr(label ?? c.label);
   return (
     <button className={`tool${on ? ' on' : ''}`} disabled={c.enabled ? !c.enabled(store) : false} aria-pressed={c.active ? on : undefined} title={c.keys ? `${text} (${prettyKeys(c.keys)})` : text}
       onMouseDown={(e) => e.preventDefault()} onClick={() => run(store, id, arg)}>

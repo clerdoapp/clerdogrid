@@ -114,3 +114,5 @@
 .sparkshow { display: flex; flex-direction: column; gap: 3px; }
 .sparkopt { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .sparkcolor { width: 30px; height: 22px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: none; }
+
+[dir='rtl'] .cfsec:not([open]) > summary::before { transform: rotate(135deg); }

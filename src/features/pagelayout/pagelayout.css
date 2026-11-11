@@ -28,7 +28,7 @@
 /* Print preview */
 .pp-backdrop { padding: 0; place-items: stretch; }
 .pp { background: var(--bg); display: grid; grid-template-columns: 270px 1fr 150px; width: 100vw; height: 100vh; overflow: hidden; }
-.pp-side { background: var(--panel); border-right: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.pp-side { background: var(--panel); border-inline-end: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
 .pp-title { display: flex; align-items: center; justify-content: space-between; }
 .pp-title h2 { font-size: 18px; }
 .pp-big { height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; border-radius: 9px; }
@@ -41,15 +41,15 @@
 .pp-empty { display: grid; place-items: center; height: 100%; color: #666; font-size: 14px; padding: 40px; }
 .pp-nav { display: flex; align-items: center; gap: 8px; font-size: 13px; }
 .pp-nav input { width: 44px; height: 28px; text-align: center; }
-.pp-thumbs { border-left: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.pp-thumbs { border-inline-start: 1px solid var(--line); background: var(--panel); overflow: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
 .pp-thumb { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11.5px; color: var(--muted); padding: 4px; border-radius: 6px; }
 .pp-thumb.on { background: var(--accent-soft); color: var(--accent); }
 .pp-tpage { width: 100%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .25); overflow: hidden; }
 @media (max-width: 900px) {
   .pp { grid-template-columns: 1fr; grid-template-rows: auto 1fr auto; }
-  .pp-side { border-right: 0; border-bottom: 1px solid var(--line); max-height: 42vh; }
+  .pp-side { border-inline-end: 0; border-bottom: 1px solid var(--line); max-height: 42vh; }
   .pp-page { height: auto; max-height: 52vh; width: auto; }
-  .pp-thumbs { flex-direction: row; border-left: 0; border-top: 1px solid var(--line); }
+  .pp-thumbs { flex-direction: row; border-inline-start: 0; border-top: 1px solid var(--line); }
   .pp-thumb { width: 80px; flex: none; }
 }
 

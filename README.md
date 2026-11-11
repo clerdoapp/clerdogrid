@@ -16,18 +16,16 @@ Calculate, analyse and chart data, with your files staying on your own device.<b
 
 ## What it does
 
-- **Calculate:** 510 worksheet functions across math, statistics, text, dates, lookup, finance, engineering, information and databases, with the results, error values and edge cases people expect from a spreadsheet. The full list is in [docs/functions.md](docs/functions.md).
-- **Modern formulas:** dynamic arrays that spill, `LET`, `LAMBDA` with named functions, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`, `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `SEQUENCE`, `XLOOKUP`, `XMATCH`, `GROUPBY`, `PIVOTBY`, `TEXTSPLIT`, regular expressions, array constants and legacy array formulas.
-- **A real calculation engine:** a dependency graph that only recalculates what changed, volatile functions, circular reference detection, iterative calculation, defined names (workbook and sheet scope), tables with structured references, 3D references across sheets and `INDIRECT`/`OFFSET`.
-- **Edit fast:** smart number, date, percent and currency recognition, formula autocomplete with argument hints and colored references, point-and-click references, F4 to cycle `$`, the fill handle with series, Flash Fill, Ctrl+Enter to fill a selection, copy and paste with other apps, paste special, drag to move, undo and redo.
-- **Format:** fonts, colors, fills and gradients, every border style, alignment, wrap, rotation, merge, custom number formats, cell styles, table styles and cell checkboxes.
-- **Organise:** insert and delete rows, columns and cells with every reference kept right, hide, group, freeze panes, sheet colors, multi-level sort, filters, remove duplicates, text to columns, drop-down lists, find and replace, go to special.
-- **Analyse:** conditional formatting, 36 chart types (column, bar, line, area, pie, doughnut, scatter, bubble, radar, histogram, box and whisker, waterfall, funnel, treemap, sunburst, Pareto, combo and more), PivotTables, subtotals, Goal Seek, data tables, descriptive statistics and **Insights**, which suggests charts and summaries for your data.
-- **Review:** threaded comments with replies, notes, spelling check, an accessibility check, protected sheets and ranges that stay editable.
-- **Insert and draw:** pictures, shapes and text boxes, and pen or highlighter ink on the sheet.
-- **Automate:** write scripts in TypeScript-style JavaScript that read and change the workbook. Scripts run in a locked-down worker with no network access and are saved inside the file.
-- **Files:** opens and saves `.xlsx` (styles, formulas, merges, rules, validation, tables, comments, charts, pictures and shapes), opens `.xlsm` and `.xltx` with macros kept but never run, and opens and exports `.csv`. Print or save as PDF. Details in [docs/file-formats.md](docs/file-formats.md).
-- **Private:** no account, no server, no tracking. Formulas never reach the internet.
+- **Calculate:** 514 worksheet functions with dynamic arrays, `LET`, `LAMBDA`, `GROUPBY`, `PIVOTBY`, `XLOOKUP`, full regular expressions and forecasting, on an engine that recalculates only what changed. Automatic or manual calculation, R1C1 references and the 1904 date system. The full list is in [docs/functions.md](docs/functions.md).
+- **Edit fast:** region-aware typing of numbers and dates, formula autocomplete with argument help, the fill handle, Flash Fill with live suggestions, paste special, drag to move, and error checking with fixes.
+- **Format:** fonts, fills, every border, alignment, custom number formats, cell styles, table styles, conditional formatting and checkboxes.
+- **Analyse:** live PivotTables with slicers, timelines and PivotCharts, 66 chart types (including stock, surface, 3D and map charts) with trendlines and error bars, sparklines, outlines and subtotals, Goal Seek, data tables, Get Data with Refresh, and **Insights**, where you can ask about your data in your own language.
+- **Print:** page setup, headers and footers, print areas, page breaks, page break preview, page layout view and ClerdoGrid's own PDF export.
+- **Work together:** live editing with codes or a QR code, everyone's cursor on the sheet, share links, threaded comments, version history and passwords.
+- **Automate:** scripts in a locked-down worker, a command-line tool and an MCP server for AI assistants.
+- **Files:** opens and saves `.xlsx`, `.xlsb`, `.xls`, `.ods` and `.csv`, opens Excel 95 and older workbooks and password-protected files, and exports PDF, web pages, XML and JSON. Details in [docs/file-formats.md](docs/file-formats.md).
+- **Your language:** 19 interface languages, with the whole app and right-to-left sheets mirrored for Arabic and Hebrew.
+- **Private:** no account, no server, no tracking. Formulas reach the internet only if you turn that on.
 
 <table>
 <tr>
@@ -68,6 +66,7 @@ Get the latest build from the [Releases page](https://github.com/clerdoapp/clerd
 | macOS | `.dmg` (Apple Silicon and Intel) |
 | Linux | `.AppImage` (any distro), `.deb` (Ubuntu, Debian, Mint), `.rpm` (Fedora, openSUSE) or `.tar.gz` |
 | iPad and web | Open [clerdoapp.github.io/clerdogrid](https://clerdoapp.github.io/clerdogrid/) in Safari, then **Share > Add to Home Screen** |
+| Command line | `clerdogrid-cli-<version>.mjs` (runs with Node 20 or later; see [docs/cli.md](docs/cli.md)) |
 
 The builds aren't code-signed yet:
 
@@ -86,9 +85,10 @@ npm test
 npm run dist    # desktop installers for this system
 npm run examples        # rebuild the sample workbooks
 npm run docs:functions  # rebuild docs/functions.md
+npm run cli             # build the command-line tool into dist-cli/
 ```
 
-More in [docs/development.md](docs/development.md), [docs/architecture.md](docs/architecture.md) and [docs/releasing.md](docs/releasing.md).
+More in [docs/development.md](docs/development.md), [docs/architecture.md](docs/architecture.md), [docs/releasing.md](docs/releasing.md), [docs/cli.md](docs/cli.md), [docs/mcp.md](docs/mcp.md) and [docs/collaboration.md](docs/collaboration.md).
 
 ## Contributing
 

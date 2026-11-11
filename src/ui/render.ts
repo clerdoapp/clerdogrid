@@ -9,6 +9,9 @@ import { inRange, type GridStore } from '../app/store';
 import { drawOutline } from './outlineGutter';
 import { displayFormat, localizeNumberText } from '../app/locale';
 import { drawCellImage } from './cellImages';
+import { firstStrong, generalAlign } from '../app/bidi';
+
+export { firstStrong, generalAlign };
 
 export interface Theme {
   bg: string; grid: string; header: string; headerInk: string; headerSel: string; headerSelInk: string; headerLine: string;
@@ -183,13 +186,6 @@ export const sheetToScreen = (vp: Viewport, sx: number, sy: number): [number, nu
   return [vp.rtl ? vp.width - lx : lx, p.y + (sy - p.scrollY) * vp.zoom];
 };
 
-/** First strong direction of a string (Unicode bidi rules P2/P3): 'rtl', 'ltr', or null when it has none. */
-export const firstStrong = (s: string): 'rtl' | 'ltr' | null => {
-  const m = /[A-Za-z\u00C0-\u024F\u0370-\u052F\u0900-\u0DFF\u0E00-\u0FFF\u1100-\u11FF\u3040-\u9FFF\uAC00-\uD7AF]|[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.exec(s);
-  if (!m) return null;
-  const c = m[0].charCodeAt(0);
-  return (c >= 0x590 && c <= 0x8ff) || (c >= 0xfb1d && c <= 0xfdff) || c >= 0xfe70 ? 'rtl' : 'ltr';
-};
 
 export const paneFor = (panes: Pane[], vp: Viewport, dataRow: number, col: number): Pane => {
   const row = vp.rowOrder ? vp.rowOrder.toDisplay(dataRow) : dataRow;
@@ -289,7 +285,8 @@ export class SheetRenderer {
         text = typeof v === 'number' ? localizeNumberText(f.text, merged.numFmt) : f.text; color = f.color;
         if (f.fill !== undefined && f.fillAt !== undefined) repeat = { ch: f.fill, at: f.fillAt };
         align = generalAlign(v, f.text, !!store.sheet.view.rtl, !!merged.align?.rtl);
-        if (f.align) align = f.align;
+        // The format's own alignment is for left-to-right sheets; numbers mirror on a right-to-left sheet.
+        if (f.align && typeof v === 'number') align = store.sheet.view.rtl ? (f.align === 'right' ? 'left' : 'right') : f.align;
       }
     }
     const h = merged.align?.h;
@@ -789,13 +786,6 @@ export class SheetRenderer {
   }
 }
 
-/** Where General alignment puts a value on screen: numbers to the trailing edge of the sheet, text by its own first strong direction. */
-export const generalAlign = (v: Scalar, text: string, sheetRtl: boolean, cellRtl: boolean): 'left' | 'right' => {
-  if (typeof v === 'number') return sheetRtl ? 'left' : 'right';
-  if (cellRtl) return 'right';
-  const d = firstStrong(text);
-  return d === 'rtl' ? 'right' : d === 'ltr' ? 'left' : sheetRtl ? 'right' : 'left';
-};
 
 const clampVisible = (r: CellRange, p: Pane): CellRange => ({ r1: Math.max(r.r1, p.r1 - 1), c1: Math.max(r.c1, p.c1 - 1), r2: Math.min(r.r2, p.r2 + 1), c2: Math.min(r.c2, p.c2 + 1) });
 

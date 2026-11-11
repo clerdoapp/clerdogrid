@@ -77,10 +77,11 @@ kbd { font: 11px 'Hanken Grotesk', sans-serif; color: var(--muted); white-space:
 /* Rail and tool panel */
 .rail { width: 62px; flex: none; background: var(--rail); display: flex; flex-direction: column; padding: 8px 6px; gap: 2px; overflow: auto; }
 .rail button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 2px 7px; border-radius: 6px; color: var(--rail-ink); font-size: 11px; font-weight: 500; }
+.rail button span { text-align: center; line-height: 1.15; white-space: nowrap; }
 .rail button:hover { background: rgba(255,255,255,.07); color: #fff; }
 .rail button.on { background: var(--rail-on); color: #fff; box-shadow: inset 3px 0 0 var(--accent-2); }
 .toolpanel { width: 256px; flex: none; background: var(--panel); display: flex; flex-direction: column; min-height: 0; border-inline-end: 1px solid var(--line); }
-.phead { display: flex; align-items: center; justify-content: space-between; padding: 10px 10px 6px 14px; }
+.phead { display: flex; align-items: center; justify-content: space-between; padding-block: 10px 6px; padding-inline: 14px 10px; }
 .phead h2 { font-size: 15px; font-weight: 600; }
 .pbody { flex: 1; overflow: auto; padding: 4px 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 .group { padding: 8px 0 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
@@ -227,10 +228,16 @@ kbd { font: 11px 'Hanken Grotesk', sans-serif; color: var(--muted); white-space:
   .cmdsearch span, .cmdsearch kbd, .savestate { display: none; }
   .cmdsearch { width: auto; }
   .docname { width: 130px; }
-  .toolpanel { position: absolute; z-index: 40; top: 48px; bottom: 28px; left: 62px; box-shadow: var(--shadow); }
+  .toolpanel { position: absolute; z-index: 40; top: 48px; bottom: 28px; inset-inline-start: 62px; box-shadow: var(--shadow); }
   .namebox { width: 96px; }
   .selsize, .stats span:nth-child(n+3) { display: none; }
 }
 @media print {
   .topbar, .rail, .toolpanel, .formulabar, .sheettabs, .status { display: none; }
 }
+
+/* Right-to-left interface: the layout mirrors through flex and logical properties; icons that point a way flip too. */
+[dir='rtl'] .rail button.on { box-shadow: inset -3px 0 0 var(--accent-2); }
+[dir='rtl'] :is(.lucide-panel-left-close, .lucide-panel-right, .lucide-chevron-left, .lucide-chevron-right, .lucide-arrow-left, .lucide-arrow-right, .lucide-undo-2, .lucide-redo-2, .lucide-send, .lucide-log-out, .lucide-external-link) { transform: scaleX(-1); }
+/* Code keeps its own direction. */
+[dir='rtl'] :is(code, kbd, .mono) { direction: ltr; unicode-bidi: isolate; }

@@ -19,7 +19,7 @@ const Btn = ({ store, id, icon: Icon, label }: { store: GridStore; id: string; i
   if (!c) return null;
   const on = c.active?.(store) ?? false;
   const enabled = c.enabled?.(store) ?? true;
-  const text = label ?? c.label;
+  const text = Tr(label ?? c.label);
   return (
     <button className={`tool${on ? ' on' : ''}`} disabled={!enabled} aria-pressed={c.active ? on : undefined} title={c.keys ? `${text} (${prettyKeys(c.keys)})` : text}
       onMouseDown={(e) => e.preventDefault()} onClick={() => run(store, id)}>

@@ -11,7 +11,7 @@ const S = 1.9;
 const Tool = ({ store, id, icon: Icon, label }: { store: GridStore; id: string; icon?: LucideIcon; label?: string }) => {
   const c = command(id);
   if (!c) return null;
-  const text = label ?? c.label;
+  const text = Tr(label ?? c.label);
   return (
     <button className="tool" disabled={c.enabled ? !c.enabled(store) : false} title={c.keys ? `${text} (${prettyKeys(c.keys)})` : text}
       onMouseDown={(e) => e.preventDefault()} onClick={() => run(store, id)}>

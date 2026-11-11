@@ -9,7 +9,7 @@ import { loadFonts, pageToSvg, paginateSheet, type PrintPage } from './print';
 import { browserEnv } from './browser';
 import { moveBreak, updateSetup } from './setup';
 import { joinHf, splitHf } from './headerFooter';
-import { N, T, Tr } from '../../ui/i18n';
+import { isRtlLang, N, T, Tr } from '../../ui/i18n';
 
 const cache = new WeakMap<Sheet, { v: number; pg: Pagination }>();
 export const sheetPagination = (store: GridStore): Pagination => {
@@ -216,7 +216,7 @@ export const PageLayoutView = ({ store }: { store: GridStore }) => {
   const active = pages.findIndex((pp) => inRange({ r1: pp.page.rows[0], c1: pp.page.cols[0], r2: pp.page.rows[1], c2: pp.page.cols[1] }, sel.active.row, sel.active.col));
 
   return (
-    <div className="plv" ref={box} tabIndex={-1} role="region" aria-label={T('Page layout')}
+    <div className="plv" ref={box} tabIndex={-1} role="region" aria-label={T('Page layout')} dir={store.sheet.view.rtl ? 'rtl' : 'ltr'}
       onScroll={(e) => setScroll({ top: e.currentTarget.scrollTop, h: e.currentTarget.clientHeight })}
       onKeyDown={(e) => {
         if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) { e.stopPropagation(); return; }
@@ -227,7 +227,7 @@ export const PageLayoutView = ({ store }: { store: GridStore }) => {
         }
         // Everything else (arrows, shortcuts, Delete) bubbles to the grid's own key handling.
       }}>
-      <div className="plv-bar">
+      <div className="plv-bar" dir={isRtlLang() ? 'rtl' : 'ltr'}>
         <span>{T('Page layout')}</span>
         <label className="b-check"><input type="checkbox" checked={ruler} onChange={(e) => { setRuler(e.target.checked); try { localStorage.setItem('clerdogrid.ruler', e.target.checked ? '1' : '0'); } catch { /* private mode */ } }} /> <span>{T('Ruler')}</span></label>
         <button className="tool" onClick={() => run(store, 'page.setup')}>{T('Page setup…')}</button>

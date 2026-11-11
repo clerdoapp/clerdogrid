@@ -1,5 +1,6 @@
 import type React from 'react';
 import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import {
   AlignCenter, AlignLeft, AlignRight, AlignVerticalJustifyCenter, AlignVerticalJustifyEnd, AlignVerticalJustifyStart, ArrowDownAZ, ArrowUpAZ, BarChart3, Bold, BookOpen,
   Calculator, ClipboardPaste, Columns3, Copy, Database, ChevronsLeft, ChevronsRight, Eraser, Eye, File, FileDown, FilePlus2, Filter, FilterX, FolderOpen, FunctionSquare,
@@ -30,12 +31,31 @@ const TABS: { id: string; label: string; icon: LucideIcon }[] = [
   { id: 'file', label: N('File'), icon: File },
 ];
 
+/** A rail label, shrunk until it fits on one line under its icon. */
+const RailLabel = ({ text }: { text: string }) => {
+  const ref = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = ref.current;
+      if (!el) return;
+      el.style.fontSize = '';
+      const room = (el.parentElement?.clientWidth ?? 50) - 4;
+      for (let size = 10.5; el.getBoundingClientRect().width > room && size >= 8; size -= 0.5) el.style.fontSize = `${size}px`;
+    };
+    fit();
+    let live = true;
+    void document.fonts?.ready.then(() => { if (live) fit(); });
+    return () => { live = false; };
+  }, [text]);
+  return <span ref={ref}>{text}</span>;
+};
+
 export const Rail = ({ store }: { store: GridStore }) => (
   <nav className="rail" aria-label={T('Tools')}>
     {TABS.map((t) => (
       <button key={t.id} className={store.view.panel === t.id ? 'on' : ''} aria-pressed={store.view.panel === t.id}
         onClick={() => { store.view.panel = store.view.panel === t.id ? null : t.id; store.emit(); }}>
-        <t.icon size={20} strokeWidth={S} /><span>{Tr(t.label)}</span>
+        <t.icon size={20} strokeWidth={S} /><RailLabel text={Tr(t.label)} />
       </button>
     ))}
   </nav>
@@ -250,7 +270,7 @@ export const ToolPanel = ({ store }: { store: GridStore }) => {
   if (!id || (!panels[id] && !panelSections(id).length)) return null;
   return (
     <aside className="toolpanel" aria-label={T('{name} tools', { name: Tr(TABS.find((t) => t.id === id)?.label ?? panelSections(id)[0]?.title) })}>
-      <div className="phead"><h2>{TABS.find((t) => t.id === id)?.label ?? panelSections(id)[0]?.title}</h2>
+      <div className="phead"><h2>{Tr(TABS.find((t) => t.id === id)?.label ?? panelSections(id)[0]?.title)}</h2>
         <button className="ico" aria-label={T('Close panel')} onClick={() => { store.view.panel = null; store.emit(); }}><PanelLeftClose size={16} strokeWidth={S} /></button></div>
       <div className="pbody">{panels[id]?.(store)}{panelSections(id).map((sec) => <Group_ key={sec.title} title={Tr(sec.title)}>{sec.render(store)}</Group_>)}</div>
     </aside>

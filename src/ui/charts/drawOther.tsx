@@ -101,7 +101,7 @@ export const drawTreemap = (c: DrawCtx): void => {
     const hot = c.hot === id;
     els.push(<rect key={`t${id}`} data-tip="" x={x + gap / 2} y={y + gap / 2} width={Math.max(0.5, w - gap)} height={Math.max(0.5, h - gap)} rx={thumb ? 0.5 : 2}
       style={{ fill: color, fillOpacity: hot ? 0.78 : 1 }}
-      onPointerEnter={thumb ? undefined : () => { c.setHot(id); c.setTip({ x: x + w / 2, y: y + h / 2, title: n.path.join(' / '), rows: [{ color, label: data.series[0]!.name, value: fmtv(n.value, data.fmt) }, { color, label: N('Share'), value: formatNumber(n.value / tree.value, '0.0%') }] }); }} />);
+      onPointerEnter={thumb ? undefined : () => { c.setHot(id); c.setTip({ x: x + w / 2, y: y + h / 2, title: n.path.join(' / '), rows: [{ color, label: data.series[0]!.name, value: fmtv(n.value, data.fmt) }, { color, label: N('Share of total'), value: formatNumber(n.value / tree.value, '0.0%') }] }); }} />);
     if (labels && w > 34 && h > 18) {
       els.push(<text className="onfill" key={`tn${id}`} x={x + 6} y={y + 15} style={{ ...onFill, fontSize: FONT, fontWeight: 600, pointerEvents: 'none' }}>{trunc(n.name, w - 12)}</text>);
       if (h > 34) els.push(<text className="onfill" key={`tv${id}`} x={x + 6} y={y + 29} style={{ ...onFill, fontSize: 10, opacity: 0.9, pointerEvents: 'none' }}>{trunc(modeText(mode, n.value, n.value / tree.value, data.fmt), w - 12, 10)}</text>);
@@ -143,7 +143,7 @@ export const drawSunburst = (c: DrawCtx): void => {
     const mid = (a.a0 + a.a1) / 2, mr = (inner + outer) / 2;
     const hot = c.hot === k;
     els.push(<path key={`sb${k}`} data-tip="" d={arcPath(cx, cy, outer, inner, a.a0, a.a1)} style={{ fill: color, fillOpacity: hot ? opacity * 0.75 : opacity, stroke: 'var(--chart-bg)', strokeWidth: thumb ? 0.5 : 1.2 }}
-      onPointerEnter={thumb ? undefined : () => { c.setHot(k); c.setTip({ x: cx + Math.cos(mid) * mr, y: cy + Math.sin(mid) * mr, title: a.node.path.join(' / '), rows: [{ color, label: data.series[0]!.name, value: fmtv(a.node.value, data.fmt) }, { color, label: N('Share'), value: formatNumber(a.node.value / tree.value, '0.0%') }] }); }} />);
+      onPointerEnter={thumb ? undefined : () => { c.setHot(k); c.setTip({ x: cx + Math.cos(mid) * mr, y: cy + Math.sin(mid) * mr, title: a.node.path.join(' / '), rows: [{ color, label: data.series[0]!.name, value: fmtv(a.node.value, data.fmt) }, { color, label: N('Share of total'), value: formatNumber(a.node.value / tree.value, '0.0%') }] }); }} />);
     if (labels && (a.a1 - a.a0) * mr > textW(a.node.name) + 6 && ring > 14) {
       els.push(<text key={`sbl${k}`} x={cx + Math.cos(mid) * mr} y={cy + Math.sin(mid) * mr + 4} textAnchor="middle" className={a.depth === 1 ? 'onfill' : undefined} style={{ ...(a.depth === 1 ? onFill : ink), fontSize: 10.5, fontWeight: 600, pointerEvents: 'none' }}>{a.node.name}</text>);
     }

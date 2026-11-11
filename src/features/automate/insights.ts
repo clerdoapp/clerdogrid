@@ -1,5 +1,6 @@
 import type { Scalar } from '../../engine/types';
 import { CellError } from '../../engine/types';
+import { AGG, BOTTOM, BY_AFTER, BY_BEFORE, TOP, TREND, type AggWord } from './askWords';
 
 export type ColType = 'number' | 'date' | 'text' | 'boolean' | 'empty';
 
@@ -221,6 +222,7 @@ export const analyze = (headers: string[], rows: Scalar[][], isDate?: (col: numb
 
 // ---------- "Ask about your data" ----------
 
+
 export type Ask =
   | { kind: 'group'; agg: 'sum' | 'average' | 'count' | 'min' | 'max'; val?: number; by: number }
   | { kind: 'top'; n: number; by: number; val: number; bottom?: boolean }
@@ -246,8 +248,11 @@ export const matchColumn = (headers: string[], phrase: string): number => {
   return i;
 };
 
-/** Reads simple English questions. Returns null with nothing understood. Pure pattern matching, no network. */
-export const parseAsk = (text: string, headers: string[], cols?: ColumnSummary[]): Ask | null => {
+/** Reads simple questions in any of the interface languages. Returns null with nothing understood. Pure pattern matching, no network. */
+export const parseAsk = (text: string, headers: string[], cols?: ColumnSummary[]): Ask | null =>
+  parseAnyLanguage(text, headers, cols) ?? parseEnglish(text, headers, cols);
+
+const parseEnglish = (text: string, headers: string[], cols?: ColumnSummary[]): Ask | null => {
   const q = norm(text).replace(/[?.!]+$/, '').replace(/^(?:show(?: me)?|what is|what's|what are|give me|list|find)\s+/, '').trim();
   let m: RegExpExecArray | null;
 
@@ -283,5 +288,147 @@ export const parseAsk = (text: string, headers: string[], cols?: ColumnSummary[]
     const val = matchColumn(headers, m[2]!);
     if (val >= 0) return { kind: 'total', agg, val };
   }
+  return null;
+};
+
+// ---------- the same questions in other languages ----------
+// Finds the columns a question names, then the words around them (askWords.ts), so word order
+// doesn't matter: "nach Region" (word before), "地域別" / "bölgeye göre" (word after).
+
+/** Scripts written without spaces between words, or with endings joined on (Korean). */
+const UNSPACED = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+const WORD = '[\\p{L}\\p{M}\\p{N}]';
+
+const askNorm = (s: string): string =>
+  s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').normalize('NFC')
+    .replace(/[أإآ]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي').replace(/ـ/g, '')
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[०-९]/g, (d) => String(d.charCodeAt(0) - 0x966))
+    .replace(/[０-９]/g, (d) => String(d.charCodeAt(0) - 0xff10))
+    .replace(/[_\-'’"“”«»„?？!！.,，、。;:؛؟()[\]]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** Drops a joined-on article or preposition: Arabic ال/بال/لل/وال, Hebrew ה/ב/ל/ו/ש/מ. */
+const bare = (w: string): string[] => {
+  const out = [w];
+  const ar = /^(?:وال|بال|فال|كال|لل|ال)(.{2,})$/.exec(w);
+  if (ar) out.push(ar[1]!);
+  const he = /^[הבלושמ]{1,2}(.{3,})$/.exec(w);
+  if (he && /[֐-׿]/.test(w)) out.push(he[1]!, w.slice(1));
+  return out;
+};
+
+/** Same word allowing endings: "regionen" ~ "region", "продаж" ~ "продажи", "bölgeye" ~ "bölge". */
+const sameWord = (a: string, b: string): boolean => {
+  for (const x of bare(a)) for (const y of bare(b)) {
+    if (x === y) return true;
+    const short = Math.min(x.length, y.length), long = Math.max(x.length, y.length);
+    let p = 0;
+    while (p < short && x[p] === y[p]) p++;
+    if (short >= 4 && p === short ? long - p <= 4 : p >= 4 && p >= long - 3) return true;
+  }
+  return false;
+};
+
+type Span = { start: number; end: number };
+type Mention = Span & { col: number };
+
+const tokensOf = (q: string): (Span & { w: string })[] => {
+  const out: (Span & { w: string })[] = [];
+  const re = /\S+/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(q))) out.push({ w: m[0], start: m.index, end: m.index + m[0].length });
+  return out;
+};
+
+/** Where the question names each column, longest names first, no overlaps. */
+const findMentions = (q: string, headers: string[]): Mention[] => {
+  const toks = tokensOf(q);
+  const out: Mention[] = [];
+  const free = (s: Span) => out.every((o) => s.end <= o.start || s.start >= o.end);
+  const order = headers.map((h, i) => ({ h: askNorm(h), i })).filter((x) => x.h).sort((a, b) => b.h.length - a.h.length);
+  for (const { h, i } of order) {
+    let hit: Span | null = null;
+    if (UNSPACED.test(h)) {
+      for (let at = q.indexOf(h); at >= 0 && !hit; at = q.indexOf(h, at + 1)) if (free({ start: at, end: at + h.length })) hit = { start: at, end: at + h.length };
+    } else {
+      const hw = h.split(' ');
+      for (let t = 0; t + hw.length <= toks.length && !hit; t++) {
+        if (!hw.every((w, k) => sameWord(toks[t + k]!.w, w))) continue;
+        const s = { start: toks[t]!.start, end: toks[t + hw.length - 1]!.end };
+        if (free(s)) hit = s;
+      }
+    }
+    if (hit) out.push({ ...hit, col: i });
+  }
+  return out.sort((a, b) => a.start - b.start);
+};
+
+/** Positions of the given words in text (whole words, or anywhere for unspaced scripts). */
+const findWords = (text: string, words: string[]): Span[] => {
+  const out: Span[] = [];
+  for (const raw of new Set(words.map(askNorm))) {
+    if (!raw) continue;
+    const esc = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = UNSPACED.test(raw) ? new RegExp(esc, 'gu') : new RegExp(`(?<!${WORD})${esc}(?!${WORD})`, 'gu');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) out.push({ start: m.index, end: m.index + m[0].length });
+  }
+  return out.sort((a, b) => a.start - b.start);
+};
+
+const parseAnyLanguage = (text: string, headers: string[], cols?: ColumnSummary[]): Ask | null => {
+  const q = askNorm(text);
+  const mentions = findMentions(q, headers);
+  if (!mentions.length) return null;
+  // Blank out the column names so their letters can't be read as keywords.
+  let rest = q;
+  for (const m of mentions) rest = rest.slice(0, m.start) + ' '.repeat(m.end - m.start) + rest.slice(m.end);
+  const has = (words: string[]) => findWords(rest, words);
+  const typeOf = (c: number) => cols?.find((x) => x.index === c)?.type;
+  const numeric = (c: number) => typeOf(c) === 'number';
+  const isDate = (c: number) => typeOf(c) === 'date' || /date|time|month|year|day|week|period/i.test(headers[c] ?? '');
+
+  // The column a "by" word points at: the next column after a word like "nach", the one before "別".
+  let by = -1;
+  for (const w of has(BY_BEFORE)) { const m = mentions.find((x) => x.start >= w.end); if (m && by < 0) by = m.col; }
+  for (const w of has(BY_AFTER)) { const m = [...mentions].reverse().find((x) => x.end <= w.start); if (m && by < 0) by = m.col; }
+
+  let agg: AggWord | null = null, aggAt = Infinity;
+  for (const k of Object.keys(AGG) as AggWord[]) for (const w of has(AGG[k])) if (w.start < aggAt) { agg = k; aggAt = w.start; }
+  const top = has(TOP), bottom = has(BOTTOM);
+  const n = /(?<![\d.])(\d{1,3})(?![\d.])/.exec(rest);
+  const others = mentions.map((m) => m.col).filter((c, i, a) => c !== by && a.indexOf(c) === i);
+
+  if (n && (top.length || bottom.length)) {
+    const cs = [...new Set(mentions.map((m) => m.col))];
+    // Only the number column named ("top 5 by Sales"): list the first text column.
+    if (cs.length === 1 && cols && numeric(cs[0]!)) { const label = cols.find((c) => c.type === 'text'); if (label) cs.unshift(label.index); }
+    if (cs.length >= 2) {
+      let val = cs.find(numeric) ?? -1, label = cs.find((c) => c !== val && !numeric(c)) ?? -1;
+      if (val < 0 || label < 0) { val = by >= 0 ? by : cs[1]!; label = cs.find((c) => c !== val)!; }
+      const isBottom = bottom.length > 0 && (!top.length || bottom[0]!.start <= top[0]!.start);
+      return { kind: 'top', n: Math.max(1, Math.min(100, +n[1]!)), by: label, val, bottom: isBottom };
+    }
+  }
+
+  if (has(TREND).length) {
+    const val = mentions.map((m) => m.col).find((c) => !isDate(c) && (numeric(c) || !cols)) ?? -1;
+    let x = mentions.map((m) => m.col).find((c) => c !== val && isDate(c)) ?? -1;
+    if (x < 0 && cols) x = cols.find((c) => c.type === 'date')?.index ?? -1;
+    if (x < 0) x = headers.findIndex((h) => /date|time|month|year|day|week|period/i.test(h));
+    if (val >= 0 && x >= 0 && val !== x) return { kind: 'trend', val, x };
+  }
+
+  if (by < 0 && agg && cols && others.length >= 2) {
+    // "Umsatz Region Summe": no "by" word, so the text column groups and the number column is summed.
+    const label = others.find((c) => !numeric(c)), val = others.find(numeric);
+    if (label !== undefined && val !== undefined) return { kind: 'group', agg, val, by: label };
+  }
+  if (by >= 0) {
+    const val = others.find((c) => !cols || numeric(c)) ?? others[0];
+    if (agg === 'count') return val === undefined ? { kind: 'group', agg, by } : { kind: 'group', agg, by, val };
+    if (val !== undefined) return { kind: 'group', agg: agg ?? 'sum', val, by };
+    return null;
+  }
+  if (agg && others.length === 1) return { kind: 'total', agg, val: others[0]! };
   return null;
 };

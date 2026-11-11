@@ -37,11 +37,11 @@
 
 /* Comments */
 .cmtpop { position: absolute; z-index: 6; width: 300px; max-height: min(440px, 70vh); overflow: auto; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--cmt); border-radius: 10px; box-shadow: var(--shadow); }
-.cmt-close { position: absolute; right: 6px; top: 6px; }
+.cmt-close { position: absolute; inset-inline-end: 6px; top: 6px; }
 .cmt-thread { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
 .cmt-thread.resolved .cmt-text { color: var(--muted); }
-.cmt-bar { display: flex; align-items: center; gap: 6px; min-height: 26px; padding-right: 26px; }
-.cmtpane .cmt-bar { padding-right: 0; }
+.cmt-bar { display: flex; align-items: center; gap: 6px; min-height: 26px; padding-inline-end: 26px; }
+.cmtpane .cmt-bar { padding-inline-end: 0; }
 .cmt-ref { font: 600 11.5px 'Roboto Mono', ui-monospace, monospace; color: var(--cmt); background: var(--cmt-soft); padding: 1px 6px; border-radius: 5px; }
 .cmt-tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 10px; padding: 0 7px; }
 .cmt-msg { position: relative; padding: 6px 0; border-top: 1px solid var(--line); }
@@ -51,7 +51,7 @@
 .cmt-who { flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.2; font-size: 13px; }
 .cmt-who .muted { font-size: 11.5px; }
 .cmt-text { font-size: 13px; padding: 4px 0 0 34px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.cmt-menu { position: absolute; right: 0; top: 30px; z-index: 2; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; }
+.cmt-menu { position: absolute; inset-inline-end: 0; top: 30px; z-index: 2; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; box-shadow: var(--shadow); padding: 4px; }
 .cmt-menu button { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 6px; font-size: 13px; text-align: start; }
 .cmt-menu button:hover { background: var(--accent-soft); color: var(--accent); }
 .cmt-compose { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; }

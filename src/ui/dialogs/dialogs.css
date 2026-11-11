@@ -31,6 +31,7 @@
 
 /* Sample and previews */
 .b-sample { font-variant-numeric: tabular-nums; justify-content: flex-end; min-height: 38px; }
+[dir=rtl] .b-sample { justify-content: flex-start; }
 .b-alignprev { height: 90px; }
 .b-fontprev { height: 70px; justify-content: center; color: var(--cell-ink); }
 .b-fillprev { height: 50px; }

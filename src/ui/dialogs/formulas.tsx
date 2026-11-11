@@ -8,6 +8,7 @@ import type { GridStore } from '../../app/store';
 import { Dialog, Field, type DialogProps } from './Dialog';
 import { goTo, rangeLabel, resultText, sheetRef } from './shared';
 import { N, T, Tr } from '../i18n';
+import { fnText } from '../i18n/fn';
 
 const evalText = (store: GridStore, text: string, sheet = store.sheetIndex): { ok: boolean; text: string; value?: Scalar | Matrix } => {
   if (!text.trim()) return { ok: true, text: '' };
@@ -96,7 +97,7 @@ export const InsertFunctionDialog = ({ store, data, close }: DialogProps<{ categ
     const res = evalText(store, call);
     return (
       <Dialog title={cur.name} close={close} onOk={insert} okLabel={T('Insert')} width={560} footer={<button onClick={() => setStep('pick')}>{T('Back')}</button>}>
-        <p className="muted small">{cur.about}</p>
+        <p className="muted small">{fnText(cur.about)}</p>
         <div className="b-args">
           {slots.map((a, i) => {
             const v = values[i] ?? '';
@@ -106,7 +107,7 @@ export const InsertFunctionDialog = ({ store, data, close }: DialogProps<{ categ
                 <label className={a.optional || a.repeat ? 'muted' : ''} htmlFor={`b-arg-${i}`}>{a.name}</label>
                 <input id={`b-arg-${i}`} className="mono" autoFocus={i === 0} value={v} onChange={(e) => { const n = [...values]; n[i] = e.target.value; setValues(n); }} placeholder={a.optional || a.repeat ? 'optional' : ''} />
                 <span className={`b-argval${pv && !pv.ok ? ' bad' : ''}`}>{pv ? `= ${pv.text}` : ''}</span>
-                <span className="b-argabout">{a.about}</span>
+                <span className="b-argabout">{fnText(a.about)}</span>
               </div>
             );
           })}
@@ -131,9 +132,9 @@ export const InsertFunctionDialog = ({ store, data, close }: DialogProps<{ categ
         <div className="b-col b-fninfo">
           {cur && <>
             <div className="mono b-sig">{signature(cur)}</div>
-            <p>{cur.about}</p>
-            <p className="muted small">{cur.category}{cur.returns ? T(' · returns {returns}', { returns: cur.returns }) : ''}</p>
-            <ul className="b-arglist">{cur.args.map((a, i) => <li key={i}><b>{a.name}</b>{a.optional || a.repeat ? T(' (optional)') : ''}: {a.about}</li>)}</ul>
+            <p>{fnText(cur.about)}</p>
+            <p className="muted small">{Tr(cur.category)}{cur.returns ? T(' · returns {returns}', { returns: fnText(cur.returns) }) : ''}</p>
+            <ul className="b-arglist">{cur.args.map((a, i) => <li key={i}><b>{a.name}</b>{a.optional || a.repeat ? T(' (optional)') : ''}: {fnText(a.about)}</li>)}</ul>
           </>}
         </div>
       </div>

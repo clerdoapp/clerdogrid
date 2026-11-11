@@ -78,7 +78,7 @@ export const FormulaBar = ({ store }: { store: GridStore }) => {
   return (
     <div className="formulabar">
       <div className="namebox">
-        <input aria-label={T('Name box')} value={nameText ?? selectionLabel(store)} spellCheck={false}
+        <input dir="ltr" aria-label={T('Name box')} value={nameText ?? selectionLabel(store)} spellCheck={false}
           onFocus={(e) => { setNameText(selectionLabel(store)); requestAnimationFrame(() => e.target.select()); }}
           onChange={(e) => setNameText(e.target.value)}
           onBlur={() => setNameText(null)}
@@ -92,7 +92,7 @@ export const FormulaBar = ({ store }: { store: GridStore }) => {
         <button className="ico sm fxbtn" aria-label={T('Insert function')} title={T('Insert function')} onClick={() => run(store, 'formula.insertFunction')}><i>fx</i></button>
       </div>
       <div className="fbox">
-        <textarea ref={input} className={`finput${expanded ? ' tall' : ''}`} aria-label={T('Formula bar')} spellCheck={false} rows={1}
+        <textarea ref={input} dir="auto" className={`finput${expanded ? ' tall' : ''}`} aria-label={T('Formula bar')} spellCheck={false} rows={1}
           value={text}
           readOnly={store.isLocked(row, col)}
           onFocus={() => { if (!store.editing) store.beginEdit(undefined, true); else if (!store.editing.inBar) { store.editing = { ...store.editing, inBar: true }; store.emit(); } }}

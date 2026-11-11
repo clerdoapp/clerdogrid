@@ -1,89 +1,128 @@
 # Features
 
-**Done** works fully. **Basic** works for common cases, with limits noted. **Not yet** is planned.
+**Done** works fully. Notes say where behaviour depends on another app or on the network.
 
 ## Calculation
 
 | Feature | State | Notes |
 |---|---|---|
-| Worksheet functions | Done | 510 functions in 13 categories; see [functions.md](functions.md), checked against published examples and an independent spreadsheet |
+| Worksheet functions | Done | 514 functions; see [functions.md](functions.md) |
 | Dynamic arrays and spilling, `#` spill references, `#SPILL!` | Done | |
 | `LET`, `LAMBDA`, named LAMBDA functions, `MAP`, `REDUCE`, `SCAN`, `BYROW`, `BYCOL`, `MAKEARRAY`, `ISOMITTED` | Done | |
-| `GROUPBY`, `PIVOTBY` | Basic | One aggregation function at a time |
+| `GROUPBY`, `PIVOTBY`, `PERCENTOF` | Done | Several aggregations at once, every optional argument |
+| Trim-range operators `.:` `:.` `.:.` and `TRIMRANGE` | Done | |
 | Legacy array formulas (Ctrl+Shift+Enter) | Done | |
 | Recalculation only of what changed | Done | Dependency graph with range buckets; no recursion, so long chains are safe |
+| Automatic, automatic except data tables, and manual calculation (F9, Shift+F9) | Done | |
+| Iterative calculation, precision as displayed, 1904 date system | Done | |
+| A1 and R1C1 reference styles | Done | |
 | Volatile functions (`NOW`, `RAND`, `OFFSET`, `INDIRECT`…) | Done | |
-| Circular references | Done | Shown in the status bar; iterative calculation can be turned on |
+| Circular references | Done | |
 | Defined names, workbook and sheet scope | Done | |
-| Tables and structured references (`Table1[Col]`, `[@Col]`, `#Headers`, `#Totals`) | Done | |
-| 3D references (`Sheet1:Sheet3!A1`), union and intersection operators | Done | |
-| Regular expressions (`REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE`) | Done | Atomic groups and possessive quantifiers aren't supported |
-| Exponential smoothing forecasts (`FORECAST.ETS` family) | Basic | Standard additive method; results can differ slightly from other apps |
-| Functions that need the internet (`WEBSERVICE`, `STOCKHISTORY`, `IMAGE`) | Not supported | Return `#CONNECT!`: the app works offline by design |
+| Tables and structured references | Done | |
+| 3D references, union and intersection operators | Done | |
+| Regular expressions (`REGEXTEST`, `REGEXEXTRACT`, `REGEXREPLACE`) | Done | Own engine with the full syntax: atomic groups, possessive quantifiers, lookbehind, recursion, conditionals, backtracking verbs, Unicode properties and full case folding |
+| Forecasting (`FORECAST.ETS` family) | Done | Additive triple smoothing with season detection, all aggregation and completion options, confidence intervals and statistics |
+| `FILTERXML` with XPath 1.0 and namespaces | Done | |
+| Internet functions (`WEBSERVICE`, `STOCKHISTORY`, `IMAGE`, `IMPORTCSV`, `IMPORTTEXT`) | Done | Off until you allow them under File > Online functions; https only; on desktop they go through a checked relay that refuses private-network addresses |
+| `TRANSLATE`, `DETECTLANGUAGE` | Done | Use the device's built-in translator when the system has one |
+| Error checking with green triangles and fixes | Done | Six rules; ignored errors are saved in the file |
 
 ## Editing
 
 | Feature | State | Notes |
 |---|---|---|
-| Typing with number, currency, percent, date and time recognition | Done | US date order |
-| Formula autocomplete, argument hints, colored references, point-and-click references, F4 | Done | |
-| Fill handle: numbers, linear trends, dates by day or month, weekdays, months, quarters, numbered text, formulas | Done | |
-| Flash Fill | Basic | Learns splits, joins and case changes of words |
-| Copy, cut and paste within the app and with other apps (text and HTML tables) | Done | |
-| Paste special: values, formulas, formats, transpose, operations, skip blanks, link | Done | |
-| Drag to move or copy cells | Done | |
+| Typing with number, currency, percent, date and time recognition | Done | Follows the chosen region: date order, separators, currency, native digits |
+| Formula autocomplete, argument hints, colored references, point-and-click references, F4 | Done | Argument descriptions in all 19 languages |
+| Region-style formulas | Done | `;` lists and `,` decimals where the region uses them; files store the standard form |
+| AutoComplete for values in a column | Done | |
+| Fill handle: numbers, trends, dates, weekdays, months, quarters, numbered text, formulas | Done | |
+| Flash Fill | Done | Learns from examples (word, number and case pieces, dates, initials); shows grey suggestions after two examples |
+| Copy, cut and paste within the app and with other apps | Done | Copy visible cells only (Alt+;) |
+| Paste special, drag to move or copy | Done | |
 | Undo and redo | Done | 200 steps |
 | Insert and delete rows, columns and cells with references kept right | Done | |
 | Find and replace, go to, go to special | Done | |
-| Keyboard shortcuts for navigation, selection, editing and formatting | Done | |
 
 ## Formatting
 
 | Feature | State | Notes |
 |---|---|---|
-| Fonts, sizes, bold, italic, underline styles, strikethrough, super/subscript, colors | Done | |
-| Fills, patterns, two-color gradients | Done | |
-| All border styles and colors | Done | |
-| Alignment, wrap, indent, rotation, vertical text, merge | Done | |
-| Number formats including custom codes, sections, colors, conditions, fractions, elapsed time | Done | |
+| Fonts, sizes, styles, colors, fills, gradients, all borders, alignment, rotation, merge | Done | |
+| Number formats including custom codes, sections, colors, conditions, locale codes | Done | |
 | Cell styles and table styles | Done | |
-| Conditional formatting: values, text, dates, top/bottom, average, duplicates, formulas, color scales, data bars, icon sets | Done | |
-| Automatic row height for larger fonts | Done | Wrapped text grows only for line breaks |
+| Conditional formatting, including color scales, data bars and icon sets | Done | |
+| Cell checkboxes | Done | |
 
 ## Data and analysis
 
 | Feature | State | Notes |
 |---|---|---|
-| Sort on several levels, by value or color | Done | |
-| Filters with value lists, conditions and top N | Done | |
-| Remove duplicates, text to columns, data validation with drop-down lists | Done | |
-| Goal Seek, data tables, descriptive statistics | Done | |
-| Subtotals and outline grouping | Basic | Collapse by hiding rows |
-| PivotTables | Basic | Static summary, or a live `PIVOTBY` formula |
-| Charts: 36 types, including column, bar, line, area, pie, doughnut, scatter, bubble, radar, histogram, box and whisker, waterfall, funnel, treemap, sunburst, Pareto and combo | Done | Titles, axes, legends and data labels; no 3D, stock charts or trendlines yet |
-| Insights: suggested charts and summaries for a range | Done | |
-| Pictures | Done | |
-| Notes, threaded comments with replies, and hyperlinks | Done | |
-| Shapes, text boxes and ink drawing | Done | |
-| Cell checkboxes | Done | |
-| Spelling check and accessibility check | Done | English dictionary |
-| Protected ranges that stay editable | Done | |
+| Sort on several levels, filters, remove duplicates, text to columns, data validation | Done | |
+| Goal Seek, data tables, descriptive statistics, Consolidate | Done | |
+| Outline: group rows and columns, level and +/- buttons, Auto Outline, Subtotal | Done | |
+| PivotTables | Done | Field list, every summary and show-values-as option, calculated fields and items, grouping, filters, layouts, styles, drill-down, GETPIVOTDATA, refresh; saved with their data cache so they stay live in other apps |
+| PivotCharts | Done | |
+| Slicers and timelines | Done | For tables and PivotTables, connected to several PivotTables |
+| Charts | Done | 66 types: column, bar, line, area, pie, doughnut, pie of pie, bar of pie, scatter, bubble, radar, stock, surface and contour, 3D column, bar, line, area and pie, cylinder, cone, pyramid, histogram, Pareto, box and whisker, waterfall, funnel, treemap, sunburst, filled map, combo |
+| Chart elements | Done | Trendlines with equation and R², error bars, up/down bars, high-low, drop and series lines, data table, full data label and axis options, secondary axes, per-point formatting, chart sheets, templates |
+| Sparklines | Done | Line, column and win/loss |
+| Insights and "Ask about your data" | Done | Questions typed in any of the 19 languages |
+| Get Data from text/CSV and other workbooks, with Refresh | Done | |
+| Pictures, shapes, text boxes, ink | Done | |
+
+## Review and sharing
+
+| Feature | State | Notes |
+|---|---|---|
+| Threaded comments, notes, hyperlinks | Done | |
+| Spelling, accessibility check, performance check, workbook statistics | Done | |
+| Sheet protection, ranges that stay editable, workbook structure protection | Done | Both password hash forms other apps use |
+| Password-protected files | Done | Opens and saves encrypted .xlsx, .xlsb, .xls and .ods |
+| Version history | Done | Local versions with preview, restore and names |
+| Working together live | Done | Codes or QR to join, everyone's cursor on the sheet, follow a person, optional TURN relay; see [collaboration.md](collaboration.md) |
+| Share links | Done | The workbook travels in the link, up to 2 MB |
+
+## Page layout and printing
+
+| Feature | State | Notes |
+|---|---|---|
+| Page setup: paper, orientation, margins, scaling and fit to pages, centering, page order | Done | |
+| Headers and footers with all codes and pictures | Done | |
+| Print area, print titles, manual page breaks | Done | |
+| Page break preview and page layout view | Done | |
+| Print preview and printing | Done | |
+| PDF export | Done | Own writer: real embedded fonts, selectable text including Arabic and Chinese, Japanese and Korean, charts as vector drawings |
+
+## View
+
+| Feature | State | Notes |
+|---|---|---|
+| Freeze panes and split panes | Done | |
+| Named sheet views and custom views | Done | Each sheet view keeps its own filter and sort order |
+| Focus cell, navigation pane, full screen, zoom to selection | Done | |
+| New window on the same workbook | Done | Both windows can edit |
+| Dark mode, touch-friendly controls | Done | |
+| Interface languages | Done | 19: English, Arabic, German, Spanish, French, Italian, Portuguese, Dutch, Swedish, Polish, Turkish, Russian, Ukrainian, Chinese, Japanese, Korean, Hindi, Indonesian and Hebrew |
+| Right to left | Done | The whole app mirrors for Arabic and Hebrew; right-to-left sheets draw with column A on the right |
+
+## Automate
+
+| Feature | State | Notes |
+|---|---|---|
 | Scripts | Done | Run in a sandboxed worker without network access; saved in the file |
-| Sheet protection | Done | Password hash compatible with other apps; it stops edits but isn't encryption |
+| Command-line tool and MCP server | Done | See [cli.md](cli.md) and [mcp.md](mcp.md) |
 
 ## Files and platforms
 
 | Feature | State | Notes |
 |---|---|---|
-| Open and save `.xlsx` | Done | Values, formulas, styles, merges, sizes, frozen panes, names, rules, validation, filters, tables, notes, links, charts, pictures, print setup |
-| Open `.xlsm` and `.xltx` | Done | Macros are kept in the file and never run |
-| Open and export `.csv` / `.tsv` | Done | |
-| Print and save as PDF | Basic | Through the system print dialog |
-| Windows, macOS, Linux installers | Done | Built by GitHub Actions on each release |
-| iPad home-screen app and web | Done | Works offline after the first visit; keeps unsaved work |
-| Dark mode, touch-friendly controls | Done | |
-| Pivot caches, slicers, sparklines | Not yet | Dropped when a file is opened |
-| Page setup dialog, page breaks, print area | Not yet | See [ROADMAP.md](../ROADMAP.md) |
-| Version history | Not yet | |
-| Right-to-left sheets | Basic | Setting is kept; the grid still draws left to right |
-| Interface languages other than English | Not yet | |
+| `.xlsx`, `.xlsm`, `.xltx`, `.xltm`, `.xlam` | Done | Open and save |
+| `.xlsb` | Done | Open and save |
+| `.xls` (97–2003) | Done | Open and save, including charts, pictures and shapes; Excel 95 and older workbooks open too |
+| `.ods`, `.ots` | Done | Open and save |
+| `.csv`, `.tsv`, `.txt`, `.prn` | Done | Import wizard with delimiters, fixed width, encodings and column types |
+| Export to PDF, web page, XML and JSON | Done | |
+| Windows, macOS, Linux installers; iPad home-screen app and web | Done | Works offline after the first visit |
+
+Details of what each file type keeps are in [file-formats.md](file-formats.md).

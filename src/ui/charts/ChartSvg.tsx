@@ -171,7 +171,7 @@ export const ChartSvg = ({ chart, data, width, height, thumb = false }: { chart:
 
   return (
     <div className="chartsvg" style={look.vars as CSSProperties | undefined}>
-      <svg ref={svg} viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" role="img" aria-label={title || T('Chart')}
+      <svg ref={svg} direction="ltr" viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" role="img" aria-label={title || T('Chart')}
         style={look.vars ? { background: 'var(--chart-bg)' } : undefined}
         onPointerMove={thumb ? undefined : (e) => {
           if (ctx.elementTips) { if (!(e.target as Element).closest?.('[data-tip]')) hover.onLeave(); return; }
