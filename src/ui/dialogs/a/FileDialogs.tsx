@@ -6,6 +6,7 @@ import { MAX_COLS, MAX_ROWS, type Scalar } from '../../../engine/types';
 import '../../charts/charts.css';
 import { Dialog, Field, type DialogProps } from '../Dialog';
 import { BOLD, hasContent } from './util';
+import { N, T, Tr } from '../../i18n';
 
 const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 const MAX_TEXT_BYTES = 64 * 1024 * 1024;
@@ -16,8 +17,8 @@ const FilePick = ({ accept, label, icon, file, onPick }: { accept: string; label
   const Icon = icon === 'image' ? ImagePlus : FileUp;
   return (
     <div className="filepick">
-      <button type="button" autoFocus onClick={() => input.current?.click()}><Icon size={16} strokeWidth={1.9} /> {label}</button>
-      <span className="muted">{file ?? 'No file chosen'}</span>
+      <button type="button" autoFocus onClick={() => input.current?.click()}><Icon size={16} strokeWidth={1.9} /> {Tr(label)}</button>
+      <span className="muted">{file ?? T('No file chosen')}</span>
       <input ref={input} type="file" accept={accept} hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) onPick(f); e.target.value = ''; }} />
     </div>
   );
@@ -30,7 +31,7 @@ interface PickedImage { name: string; data: Uint8Array; mime: string; url: strin
 const loadImage = (url: string): Promise<{ w: number; h: number }> => new Promise((resolve, reject) => {
   const img = new Image();
   img.onload = () => resolve({ w: img.naturalWidth || 300, h: img.naturalHeight || 200 });
-  img.onerror = () => reject(new Error('bad image'));
+  img.onerror = () => reject(new Error(T('That picture could not be read.')));
   img.src = url;
 });
 
@@ -39,33 +40,33 @@ export const PictureDialog = ({ store, close }: DialogProps) => {
   useEffect(() => () => { if (pic) URL.revokeObjectURL(pic.url); }, [pic]);
 
   const pick = async (f: File) => {
-    if (f.size > MAX_IMAGE_BYTES) { store.notify('That picture is too large. Choose one under 20 MB.'); return; }
+    if (f.size > MAX_IMAGE_BYTES) { store.notify(T('That picture is too large. Choose one under 20 MB.')); return; }
     const mime = IMAGE_TYPES.includes(f.type) ? f.type : '';
-    if (!mime) { store.notify('Choose a PNG, JPEG, GIF, WebP, BMP or SVG picture.'); return; }
+    if (!mime) { store.notify(T('Choose a PNG, JPEG, GIF, WebP, BMP or SVG picture.')); return; }
     try {
       const data = new Uint8Array(await f.arrayBuffer());
       const url = URL.createObjectURL(new Blob([data as BlobPart], { type: mime }));
       const { w, h } = await loadImage(url);
       setPic({ name: f.name, data, mime, url, w, h });
     } catch {
-      store.notify("This picture couldn't be read.");
+      store.notify(T('This picture couldn\'t be read.'));
     }
   };
 
   const ok = () => {
-    if (!pic) { store.notify('Choose a picture first.'); return false; }
+    if (!pic) { store.notify(T('Choose a picture first.')); return false; }
     const scale = Math.min(1, 480 / pic.w);
     const { row, col } = store.sel.active;
     const p: Picture = { id: `pic-${Date.now().toString(36)}`, data: pic.data, mime: pic.mime, anchor: { row, col, dx: 0, dy: 0, width: Math.round(pic.w * scale), height: Math.round(pic.h * scale) } };
-    store.change('Insert picture', 'sheet', () => { store.sheet.pictures.push(p); });
+    store.change(N('Insert picture'), 'sheet', () => { store.sheet.pictures.push(p); });
     return true;
   };
 
   return (
-    <Dialog title="Insert picture" close={close} onOk={ok} okLabel="Insert">
-      <FilePick accept="image/*" label="Choose picture" icon="image" file={pic?.name ?? null} onPick={(f) => void pick(f)} />
+    <Dialog title={T('Insert picture')} close={close} onOk={ok} okLabel={T('Insert')}>
+      <FilePick accept="image/*" label={T('Choose picture')} icon="image" file={pic?.name ?? null} onPick={(f) => void pick(f)} />
       {pic && <img className="imgprev" src={pic.url} alt="" />}
-      <p className="muted small">The picture is placed at {rangeAddr({ r1: store.sel.active.row, c1: store.sel.active.col, r2: store.sel.active.row, c2: store.sel.active.col })}, up to 480 pixels wide.</p>
+      <p className="muted small">{T('The picture is placed at {cell}, up to 480 pixels wide.', { cell: rangeAddr({ r1: store.sel.active.row, c1: store.sel.active.col, r2: store.sel.active.row, c2: store.sel.active.col }) })}</p>
     </Dialog>
   );
 };
@@ -73,7 +74,7 @@ export const PictureDialog = ({ store, close }: DialogProps) => {
 // ---------- Text / CSV import ----------
 
 const DELIMS: { value: string; label: string }[] = [
-  { value: '', label: 'Detect automatically' }, { value: ',', label: 'Comma' }, { value: ';', label: 'Semicolon' }, { value: '\t', label: 'Tab' }, { value: '|', label: 'Vertical bar' },
+  { value: '', label: N('Detect automatically') }, { value: ',', label: N('Comma') }, { value: ';', label: N('Semicolon') }, { value: '\t', label: N('Tab') }, { value: '|', label: N('Vertical bar') },
 ];
 
 export const ImportCsvDialog = ({ store, close }: DialogProps) => {
@@ -84,25 +85,25 @@ export const ImportCsvDialog = ({ store, close }: DialogProps) => {
   const parsed = useMemo(() => (file ? readCsv(file.text, delim ? { delimiter: delim } : {}) : null), [file, delim]);
 
   const pick = async (f: File) => {
-    if (f.size > MAX_TEXT_BYTES) { store.notify('That file is too large to import.'); return; }
+    if (f.size > MAX_TEXT_BYTES) { store.notify(T('That file is too large to import.')); return; }
     try {
       const text = await f.text();
       setFile({ name: f.name, text });
       if (/\.tsv$/i.test(f.name)) setDelim('\t');
     } catch {
-      store.notify("This file couldn't be read.");
+      store.notify(T('This file couldn\'t be read.'));
     }
   };
 
   const ok = () => {
-    if (!parsed || !parsed.rows.length) { store.notify('Choose a text or CSV file with some data.'); return false; }
+    if (!parsed || !parsed.rows.length) { store.notify(T('Choose a text or CSV file with some data.')); return false; }
     const { row, col } = store.sel.active;
     const rows = parsed.rows.slice(0, MAX_ROWS - row);
     const width = Math.min(MAX_COLS - col, Math.max(...rows.map((r) => r.length)));
     const area = { r1: row, c1: col, r2: row + rows.length - 1, c2: col + width - 1 };
-    if (hasContent(store, store.sheetIndex, area) && !confirm('Replace the data in the cells where the file goes?')) return false;
+    if (hasContent(store, store.sheetIndex, area) && !confirm(T('Replace the data in the cells where the file goes?'))) return false;
     const sheet = store.sheetIndex;
-    store.change('Import text', [{ area }], () => {
+    store.change(N('Import text'), [{ area }], () => {
       rows.forEach((line, i) => {
         for (let j = 0; j < width; j++) {
           const v: Scalar = line[j] ?? null;
@@ -119,20 +120,20 @@ export const ImportCsvDialog = ({ store, close }: DialogProps) => {
       });
     });
     store.selectRange(area, { row, col });
-    if (parsed.rows.length > rows.length) store.notify('Some rows did not fit on the sheet and were left out.');
+    if (parsed.rows.length > rows.length) store.notify(T('Some rows did not fit on the sheet and were left out.'));
     return true;
   };
 
   const preview = parsed?.rows.slice(0, 12) ?? [];
   const cols = Math.min(20, Math.max(0, ...preview.map((r) => r.length)));
   return (
-    <Dialog title="Import text or CSV" close={close} wide onOk={ok} okLabel="Import">
-      <FilePick accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values" label="Choose file" icon="file" file={file?.name ?? null} onPick={(f) => void pick(f)} />
+    <Dialog title={T('Import text or CSV')} close={close} wide onOk={ok} okLabel={T('Import')}>
+      <FilePick accept=".csv,.tsv,.txt,text/csv,text/plain,text/tab-separated-values" label={T('Choose file')} icon="file" file={file?.name ?? null} onPick={(f) => void pick(f)} />
       <div className="grid2">
-        <Field label="Separator">
-          <select value={delim} onChange={(e) => setDelim(e.target.value)}>{DELIMS.map((d) => <option key={d.label} value={d.value}>{d.label}</option>)}</select>
+        <Field label={T('Separator')}>
+          <select value={delim} onChange={(e) => setDelim(e.target.value)}>{DELIMS.map((d) => <option key={d.label} value={d.value}>{Tr(d.label)}</option>)}</select>
         </Field>
-        <label className="checkrow" style={{ alignSelf: 'end', minHeight: 32 }}><input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} /> First row is headers</label>
+        <label className="checkrow" style={{ alignSelf: 'end', minHeight: 32 }}><input type="checkbox" checked={header} onChange={(e) => setHeader(e.target.checked)} />{' '}{T('First row is headers')}</label>
       </div>
       {parsed && (
         <>
@@ -141,7 +142,7 @@ export const ImportCsvDialog = ({ store, close }: DialogProps) => {
               {preview.map((r, i) => <tr key={i} className={header && i === 0 ? 'hdr' : ''}>{Array.from({ length: cols }, (_, j) => <td key={j}>{cellText(r[j] ?? null)}</td>)}</tr>)}
             </tbody></table>
           </div>
-          <p className="muted small">{parsed.rows.length.toLocaleString()} rows. Goes into the sheet at {rangeAddr({ r1: store.sel.active.row, c1: store.sel.active.col, r2: store.sel.active.row, c2: store.sel.active.col })}.</p>
+          <p className="muted small">{T('{count, plural, one {# row} other {# rows}}. Goes into the sheet at {cell}.', { count: parsed.rows.length, cell: rangeAddr({ r1: store.sel.active.row, c1: store.sel.active.col, r2: store.sel.active.row, c2: store.sel.active.col }) })}</p>
         </>
       )}
     </Dialog>

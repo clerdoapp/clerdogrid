@@ -7,10 +7,12 @@ import type { GridStore } from '../app/store';
 import { FormulaAssist } from './FormulaAssist';
 import { cycleAbsolute } from './GridView';
 import { gotoReference } from '../app/goto';
+import { T } from './i18n';
 
 const S = 1.9;
 
 const selectionLabel = (store: GridStore): string => {
+  if (store.r1c1) return r1c1Label(store);
   const r = store.range;
   if (store.editing) return `${colName(store.editing.col)}${store.editing.row + 1}`;
   const name = store.wb.names.find((n) => {
@@ -26,6 +28,15 @@ const selectionLabel = (store: GridStore): string => {
   if (r.r1 === 0 && r.r2 === MAX_ROWS - 1) return `${colName(r.c1)}:${colName(r.c2)}`;
   if (r.c1 === 0 && r.c2 === MAX_COLS - 1) return `${r.r1 + 1}:${r.r2 + 1}`;
   return `${colName(store.sel.active.col)}${store.sel.active.row + 1}`;
+};
+
+const r1c1Label = (store: GridStore): string => {
+  const r = store.range;
+  if (store.editing) return `R${store.editing.row + 1}C${store.editing.col + 1}`;
+  if (r.r1 === 0 && r.r2 === MAX_ROWS - 1 && r.c1 === 0 && r.c2 === MAX_COLS - 1) return `R${store.sel.active.row + 1}C${store.sel.active.col + 1}`;
+  if (r.r1 === 0 && r.r2 === MAX_ROWS - 1) return r.c1 === r.c2 ? `C${r.c1 + 1}` : `C${r.c1 + 1}:C${r.c2 + 1}`;
+  if (r.c1 === 0 && r.c2 === MAX_COLS - 1) return r.r1 === r.r2 ? `R${r.r1 + 1}` : `R${r.r1 + 1}:R${r.r2 + 1}`;
+  return `R${store.sel.active.row + 1}C${store.sel.active.col + 1}`;
 };
 
 /** Name box (go to / define names) and the formula bar. */
@@ -49,7 +60,7 @@ export const FormulaBar = ({ store }: { store: GridStore }) => {
     if (e.key === 'Enter' && !e.altKey) {
       e.preventDefault();
       if (mod && e.shiftKey) { store.commitEdit(false, true); return; }
-      if (store.commitEdit(mod)) { if (!mod) store.move(e.shiftKey ? -1 : 1, 0, true); focusGrid(); }
+      if (store.commitEdit(mod)) { if (!mod) store.moveAfterEnter(e.shiftKey); focusGrid(); }
       return;
     }
     if (e.key === 'Enter' && e.altKey) {
@@ -67,21 +78,21 @@ export const FormulaBar = ({ store }: { store: GridStore }) => {
   return (
     <div className="formulabar">
       <div className="namebox">
-        <input aria-label="Name box" value={nameText ?? selectionLabel(store)} spellCheck={false}
+        <input aria-label={T('Name box')} value={nameText ?? selectionLabel(store)} spellCheck={false}
           onFocus={(e) => { setNameText(selectionLabel(store)); requestAnimationFrame(() => e.target.select()); }}
           onChange={(e) => setNameText(e.target.value)}
           onBlur={() => setNameText(null)}
           onKeyDown={(e) => { if (e.key === 'Enter') { gotoReference(store, nameText ?? ''); setNameText(null); focusGrid(); } if (e.key === 'Escape') { setNameText(null); focusGrid(); } }} />
-        <button className="ico sm" aria-label="Named ranges" title="Name manager" onClick={() => run(store, 'formula.names')}><ChevronDown size={14} strokeWidth={S} /></button>
+        <button className="ico sm" aria-label={T('Named ranges')} title={T('Name manager')} onClick={() => run(store, 'formula.names')}><ChevronDown size={14} strokeWidth={S} /></button>
       </div>
       <span className="selsize">{size}</span>
       <div className="fbtns">
-        <button className="ico sm" aria-label="Cancel" disabled={!store.editing} onClick={() => { store.cancelEdit(); focusGrid(); }}><X size={15} strokeWidth={S} /></button>
-        <button className="ico sm" aria-label="Enter" disabled={!store.editing} onClick={() => { store.commitEdit(); focusGrid(); }}><Check size={15} strokeWidth={S} /></button>
-        <button className="ico sm fxbtn" aria-label="Insert function" title="Insert function" onClick={() => run(store, 'formula.insertFunction')}><i>fx</i></button>
+        <button className="ico sm" aria-label={T('Cancel')} disabled={!store.editing} onClick={() => { store.cancelEdit(); focusGrid(); }}><X size={15} strokeWidth={S} /></button>
+        <button className="ico sm" aria-label={T('Enter')} disabled={!store.editing} onClick={() => { store.commitEdit(); focusGrid(); }}><Check size={15} strokeWidth={S} /></button>
+        <button className="ico sm fxbtn" aria-label={T('Insert function')} title={T('Insert function')} onClick={() => run(store, 'formula.insertFunction')}><i>fx</i></button>
       </div>
       <div className="fbox">
-        <textarea ref={input} className={`finput${expanded ? ' tall' : ''}`} aria-label="Formula bar" spellCheck={false} rows={1}
+        <textarea ref={input} className={`finput${expanded ? ' tall' : ''}`} aria-label={T('Formula bar')} spellCheck={false} rows={1}
           value={text}
           readOnly={store.isLocked(row, col)}
           onFocus={() => { if (!store.editing) store.beginEdit(undefined, true); else if (!store.editing.inBar) { store.editing = { ...store.editing, inBar: true }; store.emit(); } }}
@@ -89,7 +100,7 @@ export const FormulaBar = ({ store }: { store: GridStore }) => {
           onKeyDown={onKey} />
         {store.editing?.inBar && <FormulaAssist store={store} anchor={{ x: 0, y: 32 }} input={input} keyRef={assistKey} />}
       </div>
-      <button className="ico sm" aria-label={expanded ? 'Collapse formula bar' : 'Expand formula bar'} onClick={() => setExpanded(!expanded)}>
+      <button className="ico sm" aria-label={expanded ? T('Collapse formula bar') : T('Expand formula bar')} onClick={() => setExpanded(!expanded)}>
         <ChevronDown size={15} strokeWidth={S} style={{ transform: expanded ? 'rotate(180deg)' : undefined }} />
       </button>
     </div>

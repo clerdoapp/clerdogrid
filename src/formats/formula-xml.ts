@@ -1,6 +1,7 @@
 // Formula text transforms needed when reading/writing SpreadsheetML.
 import { colIndex, colName } from '../model/workbook';
 import { MAX_COLS, MAX_ROWS } from '../engine/types';
+import { trimRefsToFile } from '../engine/parser';
 
 /** Applies `f` to each stretch of the formula outside string literals, quoted sheet names and [structured refs]. */
 const mapOutside = (formula: string, f: (code: string) => string): string => {
@@ -78,7 +79,8 @@ const callArgs = (s: string, open: number): { args: [number, number][]; close: n
 };
 
 /** Adds "_xlfn." / "_xlfn._xlws." prefixes, and "_xlpm." on LET/LAMBDA parameter names, as the file format stores them. */
-export const addFuturePrefixes = (formula: string): string => {
+export const addFuturePrefixes = (input: string): string => {
+  const formula = trimRefsToFile(input);
   const params = new Set<string>();
   const code = formula;
   const scan = new RegExp(FN_RE.source, 'g');

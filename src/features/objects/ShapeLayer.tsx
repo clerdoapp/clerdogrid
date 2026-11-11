@@ -8,6 +8,7 @@ import { fontFamily } from '../../ui/render';
 import { anchorAt, anchorPx, place, setUi, ui, type Box } from './state';
 import { deleteShape, orderShape, updateShape } from './ops';
 import { luminance } from './checks';
+import { N, T } from '../../ui/i18n';
 
 const S = 1.9;
 
@@ -89,12 +90,15 @@ export const ShapeLayer = ({ store, vp }: { store: GridStore; vp: Viewport }) =>
     const z = vp.zoom;
     let dx = (e.clientX - d.sx) / z, dy = (e.clientY - d.sy) / z;
     if (Math.abs(dx) + Math.abs(dy) > 1) d.moved = true;
-    const o = d.orig;
-    if (d.mode === 'move') { setLive({ id: d.id, x: o.x + dx, y: o.y + dy, w: o.w, h: o.h, rot: o.rot }); return; }
+    // On a right-to-left sheet, work in screen direction (x mirrored) and convert back at the end.
+    const flip = !!vp.rtl;
+    const o = flip ? { ...d.orig, x: -(d.orig.x + d.orig.w) } : d.orig;
+    const out = (b: { x: number; y: number; w: number; h: number; rot: number }) => setLive({ id: d.id, ...b, x: flip ? -(b.x + b.w) : b.x });
+    if (d.mode === 'move') { out({ x: o.x + dx, y: o.y + dy, w: o.w, h: o.h, rot: o.rot }); return; }
     if (d.mode === 'rotate') {
       let deg = (Math.atan2(e.clientY - d.cy, e.clientX - d.cx) * 180) / Math.PI + 90;
       if (e.shiftKey) deg = Math.round(deg / 15) * 15;
-      setLive({ id: d.id, ...o, rot: Math.round(((deg % 360) + 360) % 360) });
+      setLive({ id: d.id, ...d.orig, rot: Math.round(((deg % 360) + 360) % 360) });
       return;
     }
     // Resize in the shape's own (rotated) frame.
@@ -114,7 +118,7 @@ export const ShapeLayer = ({ store, vp }: { store: GridStore; vp: Viewport }) =>
     const minS = isLine(shapes.find((s) => s.id === d.id)!.kind) ? 0 : 8;
     if (w < minS) { if (m.includes('w')) x -= minS - w; w = minS; }
     if (h < minS) { if (m.startsWith('n')) y -= minS - h; h = minS; }
-    setLive({ id: d.id, x, y, w, h, rot: o.rot });
+    out({ x, y, w, h, rot: o.rot });
   };
 
   const end = (e: React.PointerEvent) => {
@@ -125,7 +129,7 @@ export const ShapeLayer = ({ store, vp }: { store: GridStore; vp: Viewport }) =>
     if (!d || !l || !d.moved) return;
     void e;
     const anchor = anchorAt(vp, l.x, l.y, l.w, l.h);
-    updateShape(store, d.id, { anchor, rotation: l.rot || undefined }, d.mode === 'move' ? 'Move shape' : d.mode === 'rotate' ? 'Rotate shape' : 'Resize shape');
+    updateShape(store, d.id, { anchor, rotation: l.rot || undefined }, d.mode === 'move' ? N('Move shape') : d.mode === 'rotate' ? N('Rotate shape') : N('Resize shape'));
   };
 
   return (
@@ -135,7 +139,7 @@ export const ShapeLayer = ({ store, vp }: { store: GridStore; vp: Viewport }) =>
         let box: Box = place(vp, sh.anchor);
         if (lv) {
           const o = anchorPx(vp, sh.anchor);
-          box = { left: box.left + (lv.x - o.x) * vp.zoom, top: box.top + (lv.y - o.y) * vp.zoom, width: lv.w * vp.zoom, height: lv.h * vp.zoom };
+          box = { left: vp.rtl ? box.left - (lv.x + lv.w - o.x - sh.anchor.width) * vp.zoom : box.left + (lv.x - o.x) * vp.zoom, top: box.top + (lv.y - o.y) * vp.zoom, width: lv.w * vp.zoom, height: lv.h * vp.zoom };
         }
         const rot = lv ? lv.rot : sh.rotation ?? 0;
         const sel = ui.shape === sh.id;
@@ -153,7 +157,7 @@ export const ShapeLayer = ({ store, vp }: { store: GridStore; vp: Viewport }) =>
               : sh.text ? <div className="gshape-text" style={{ justifyContent: sh.kind === 'textBox' ? 'flex-start' : 'center', textAlign: sh.align ?? 'center', font: `${f.italic ? 'italic ' : ''}${f.bold ? 700 : 400} ${((f.size ?? 11) * 4) / 3 * vp.zoom}px ${fontFamily(f.name)}`, color: f.color ?? inkFor(sh) }}>{sh.text}</div> : null)}
             {sel && !editing && <>
               {HANDLES.map((hd) => <span key={hd} className={`ghandle h-${hd}`} onPointerDown={(e) => begin(e, sh, hd)} onPointerMove={move} onPointerUp={end} />)}
-              {!isLine(sh.kind) && <span className="ghandle rot" title="Rotate" onPointerDown={(e) => begin(e, sh, 'rotate')} onPointerMove={move} onPointerUp={end} />}
+              {!isLine(sh.kind) && <span className="ghandle rot" title={T('Rotate')} onPointerDown={(e) => begin(e, sh, 'rotate')} onPointerMove={move} onPointerUp={end} />}
             </>}
           </div>
         );
@@ -168,13 +172,13 @@ export const ShapeLayer = ({ store, vp }: { store: GridStore; vp: Viewport }) =>
         const b = { left: p0.left + (p0.width - bw) / 2, top: p0.top + (p0.height - bh) / 2, width: bw, height: bh };
         const top = b.top - 76 < vp.headerH ? b.top + b.height + 14 : b.top - 76;
         return (
-          <div className="gshape-bar" role="toolbar" aria-label="Shape" style={{ left: Math.max(vp.headerW + 4, Math.min(b.left, vp.width - 230)), top, pointerEvents: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
-            {!isLine(sh.kind) && <button title="Edit text" aria-label="Edit text" onClick={() => setUi(store, { editingShape: sh.id })}><Pencil size={15} strokeWidth={S} /></button>}
-            <button title="Bring forward" aria-label="Bring forward" onClick={() => orderShape(store, sh.id, 'forward')}><ArrowUpToLine size={15} strokeWidth={S} /></button>
-            <button title="Send backward" aria-label="Send backward" onClick={() => orderShape(store, sh.id, 'backward')}><ArrowDownToLine size={15} strokeWidth={S} /></button>
-            <button title="Alt text" aria-label="Alt text" onClick={() => openDialog(store, 'altText', { type: 'shape', id: sh.id })}><ScanText size={15} strokeWidth={S} /></button>
-            <button title="Format" aria-label="Format" className="txt" onClick={() => { store.view.panel = 'insert'; store.emit(); requestAnimationFrame(() => document.querySelector('.shapefmt')?.scrollIntoView({ block: 'nearest' })); }}>Format</button>
-            <button title="Delete" aria-label="Delete shape" onClick={() => { deleteShape(store, sh.id); setUi(store, { shape: null }); focusGrid(); }}><Trash2 size={15} strokeWidth={S} /></button>
+          <div className="gshape-bar" role="toolbar" aria-label={T('Shape')} style={{ left: vp.rtl ? Math.max(4, Math.min(b.left, vp.width - vp.headerW - 230)) : Math.max(vp.headerW + 4, Math.min(b.left, vp.width - 230)), top, pointerEvents: 'auto' }} onPointerDown={(e) => e.stopPropagation()}>
+            {!isLine(sh.kind) && <button title={T('Edit text')} aria-label={T('Edit text')} onClick={() => setUi(store, { editingShape: sh.id })}><Pencil size={15} strokeWidth={S} /></button>}
+            <button title={T('Bring forward')} aria-label={T('Bring forward')} onClick={() => orderShape(store, sh.id, 'forward')}><ArrowUpToLine size={15} strokeWidth={S} /></button>
+            <button title={T('Send backward')} aria-label={T('Send backward')} onClick={() => orderShape(store, sh.id, 'backward')}><ArrowDownToLine size={15} strokeWidth={S} /></button>
+            <button title={T('Alt text')} aria-label={T('Alt text')} onClick={() => openDialog(store, 'altText', { type: 'shape', id: sh.id })}><ScanText size={15} strokeWidth={S} /></button>
+            <button title={T('Format')} aria-label={T('Format')} className="txt" onClick={() => { store.view.panel = 'insert'; store.emit(); requestAnimationFrame(() => document.querySelector('.shapefmt')?.scrollIntoView({ block: 'nearest' })); }}>{T('Format')}</button>
+            <button title={T('Delete')} aria-label={T('Delete shape')} onClick={() => { deleteShape(store, sh.id); setUi(store, { shape: null }); focusGrid(); }}><Trash2 size={15} strokeWidth={S} /></button>
           </div>
         );
       })()}
@@ -189,12 +193,12 @@ const ShapeText = ({ store, shape, zoom }: { store: GridStore; shape: Shape; zoo
   const done = () => {
     if (ui.editingShape !== shape.id) return;
     ui.editingShape = null;
-    if (text !== (shape.text ?? '')) updateShape(store, shape.id, { text: text || undefined }, 'Shape text'); else store.emit();
+    if (text !== (shape.text ?? '')) updateShape(store, shape.id, { text: text || undefined }, T('Shape text')); else store.emit();
     focusGrid();
   };
   const f = shape.font ?? {};
   return (
-    <textarea ref={ref} className="gshape-edit" value={text} aria-label="Shape text" onChange={(e) => setText(e.target.value)} onBlur={done}
+    <textarea ref={ref} className="gshape-edit" value={text} aria-label={T('Shape text')} onChange={(e) => setText(e.target.value)} onBlur={done}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape' || (e.key === 'Enter' && (e.metaKey || e.ctrlKey))) { e.preventDefault(); done(); } }}
       style={{ textAlign: shape.align ?? 'center', font: `${f.italic ? 'italic ' : ''}${f.bold ? 700 : 400} ${((f.size ?? 11) * 4) / 3 * zoom}px ${fontFamily(f.name)}`, color: f.color ?? inkFor(shape) }} />

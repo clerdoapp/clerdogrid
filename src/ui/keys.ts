@@ -1,6 +1,7 @@
 import { allCommands, run } from '../app/commands';
 import { MAX_COLS, MAX_ROWS } from '../engine/types';
 import type { GridStore } from '../app/store';
+import { T } from './i18n';
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iPad|iPhone/.test(navigator.platform || navigator.userAgent);
 
@@ -27,7 +28,21 @@ export const keyName = (e: KeyboardEvent): string => {
   return parts.join('+');
 };
 
-export const prettyKeys = (k: string): string => k.replace(/Mod/g, isMac ? '⌘' : 'Ctrl').replace(/Shift/g, isMac ? '⇧' : 'Shift').replace(/Alt/g, isMac ? '⌥' : 'Alt').replace(/\+/g, isMac ? '' : '+');
+export const prettyKeys = (k: string): string => k.replace(/Mod/g, isMac ? '⌘' : T('Ctrl')).replace(/Shift/g, isMac ? '⇧' : 'Shift').replace(/Alt/g, isMac ? '⌥' : 'Alt').replace(/\+/g, isMac ? '' : '+');
+
+/**
+ * Row and column step for an arrow key. On a right-to-left sheet the columns run leftwards on screen, so
+ * Left moves to the next column (towards B) and Right to the previous one: arrows always move the way they point.
+ */
+export const arrowDelta = (key: string, rtl: boolean): [number, number] | undefined => {
+  switch (key) {
+    case 'ArrowUp': return [-1, 0];
+    case 'ArrowDown': return [1, 0];
+    case 'ArrowLeft': return [0, rtl ? 1 : -1];
+    case 'ArrowRight': return [0, rtl ? -1 : 1];
+    default: return undefined;
+  }
+};
 
 let byKey: Map<string, string> | null = null;
 const commandFor = (k: string): string | undefined => {
@@ -39,8 +54,7 @@ const commandFor = (k: string): string | undefined => {
 export const handleGridKey = (store: GridStore, e: KeyboardEvent, opts: { pageRows: number }): boolean => {
   const mod = isMac ? e.metaKey : e.ctrlKey;
   const { active } = store.sel;
-  const arrows: Record<string, [number, number]> = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
-  const d = arrows[e.key];
+  const d = arrowDelta(e.key, !!store.sheet.view.rtl);
   if (d && !e.altKey) {
     if (mod) {
       const from = e.shiftKey ? cornerOpposite(store) : active;
@@ -55,7 +69,7 @@ export const handleGridKey = (store: GridStore, e: KeyboardEvent, opts: { pageRo
   switch (e.key) {
     case 'Enter':
       if (mod || e.altKey) break;
-      store.move(e.shiftKey ? -1 : 1, 0, true);
+      store.moveAfterEnter(e.shiftKey);
       return true;
     case 'Tab':
       store.move(0, e.shiftKey ? -1 : 1, true);
@@ -78,7 +92,7 @@ export const handleGridKey = (store: GridStore, e: KeyboardEvent, opts: { pageRo
       return true;
     case 'Backspace':
       if (mod) break;
-      if (store.isLocked(active.row, active.col)) { store.notify('This cell is protected.'); return true; }
+      if (store.isLocked(active.row, active.col)) { store.notify(T('This cell is protected.')); return true; }
       run(store, 'edit.clearContents');
       store.beginEdit('');
       return true;

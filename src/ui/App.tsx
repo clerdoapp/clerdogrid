@@ -12,6 +12,8 @@ import { SheetTabs } from './SheetTabs';
 import { StatusBar } from './StatusBar';
 import { ContextMenu } from './ContextMenu';
 import { DialogHost } from './DialogHost';
+import { runStartups } from './panelRegistry';
+import { onLangChange } from './i18n';
 
 const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
 
@@ -26,11 +28,13 @@ export const App = () => {
     return s;
   }, []);
   useSyncExternalStore(store.subscribe, store.getVersion);
+  // A new interface language re-renders everything (canvas included) without a reload.
+  useEffect(() => onLangChange(() => store.touch()), [store]);
   const api = useRef<GridApi | null>(null);
 
   useEffect(() => {
     (window as unknown as { __store: GridStore }).__store = store;
-    void openLaunchFile(store).then((opened) => { if (!opened) void restoreDraft(store); });
+    void runStartups(store).then((handled) => { if (!handled) void openLaunchFile(store).then((opened) => { if (!opened) void restoreDraft(store); }); });
     const stop = startAutosave(store);
     const beforeUnload = (e: BeforeUnloadEvent) => { if (desktop && store.file.dirty) { e.preventDefault(); e.returnValue = ''; } };
     window.addEventListener('beforeunload', beforeUnload);

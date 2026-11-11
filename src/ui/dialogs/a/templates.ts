@@ -1,6 +1,7 @@
 import { Engine } from '../../../engine/engine';
 import type { Scalar } from '../../../engine/types';
 import { cellKey, colIndex, internStyle, newSheet, newWorkbook, type Cell, type CellStyle, type Chart, type Sheet, type Workbook } from '../../../model/workbook';
+import { N } from '../../i18n';
 
 /** A template cell: a value, or a formula written "=...". */
 type In = Scalar | undefined;
@@ -159,7 +160,7 @@ const sales = (): Workbook => {
   ];
   const ref = (c: string) => `Sales!$${c}$2:$${c}$13`;
   const chart: Chart = {
-    id: 'chart-sales', type: 'line', title: 'Sales by month',
+    id: 'chart-sales', type: 'line', title: N('Sales by month'),
     series: ['B', 'C', 'D'].map((c) => ({ name: `Sales!$${c}$1`, values: ref(c), categories: ref('A') })),
     anchor: { row: 0, col: 6, dx: 12, dy: 0, width: 520, height: 300 }, legend: 'bottom',
   };
@@ -233,12 +234,12 @@ const grades = (): Workbook => {
 export interface Template { id: string; name: string; about: string; icon: 'budget' | 'invoice' | 'loan' | 'todo' | 'sales' | 'attendance' | 'expenses' | 'grades'; make: () => Workbook }
 
 export const TEMPLATES: Template[] = [
-  { id: 'budget', name: 'Monthly budget', about: 'Plan income and spending, and see what is left.', icon: 'budget', make: budget },
-  { id: 'invoice', name: 'Invoice', about: 'Line items with tax and a total due.', icon: 'invoice', make: invoice },
-  { id: 'loan', name: 'Loan calculator', about: 'Monthly payment and a full payment schedule.', icon: 'loan', make: loan },
-  { id: 'todo', name: 'To-do list', about: 'Tasks with priority, due date and status.', icon: 'todo', make: todo },
-  { id: 'sales', name: 'Sales report', about: 'Monthly sales by region with a chart.', icon: 'sales', make: sales },
-  { id: 'attendance', name: 'Attendance', about: 'Daily marks with totals and a rate.', icon: 'attendance', make: attendance },
-  { id: 'expenses', name: 'Expense report', about: 'Receipts with totals by category.', icon: 'expenses', make: expenses },
-  { id: 'grades', name: 'Grade book', about: 'Scores, averages and letter grades.', icon: 'grades', make: grades },
+  { id: 'budget', name: N('Monthly budget'), about: N('Plan income and spending, and see what is left.'), icon: 'budget', make: budget },
+  { id: 'invoice', name: N('Invoice'), about: N('Line items with tax and a total due.'), icon: 'invoice', make: invoice },
+  { id: 'loan', name: N('Loan calculator'), about: N('Monthly payment and a full payment schedule.'), icon: 'loan', make: loan },
+  { id: 'todo', name: N('To-do list'), about: N('Tasks with priority, due date and status.'), icon: 'todo', make: todo },
+  { id: 'sales', name: N('Sales report'), about: N('Monthly sales by region with a chart.'), icon: 'sales', make: sales },
+  { id: 'attendance', name: N('Attendance'), about: N('Daily marks with totals and a rate.'), icon: 'attendance', make: attendance },
+  { id: 'expenses', name: N('Expense report'), about: N('Receipts with totals by category.'), icon: 'expenses', make: expenses },
+  { id: 'grades', name: N('Grade book'), about: N('Scores, averages and letter grades.'), icon: 'grades', make: grades },
 ];

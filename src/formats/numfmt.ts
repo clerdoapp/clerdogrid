@@ -1,6 +1,7 @@
 // spreadsheet number formatting (ECMA-376 Part 1, 18.8.31 numFmts) with spreadsheet's display rules.
 import { isError, type Scalar } from '../engine/types';
 import { fromSerial, weekdayOf } from '../engine/date';
+import { activeLocale, activeNames, currencyFormatFor, currencySymbols, namesForLcid, toNativeDigits } from './locales';
 
 export interface Formatted {
   text: string;
@@ -68,7 +69,7 @@ type Tok =
 
 type Kind = 'num' | 'date' | 'text' | 'general';
 interface Cond { op: string; v: number }
-interface Section { toks: Tok[]; color?: string; cond?: Cond; kind: Kind; ampm: boolean; sub: number }
+interface Section { toks: Tok[]; color?: string; cond?: Cond; kind: Kind; ampm: boolean; sub: number; lcid?: number; digits?: 'arab' | 'pers' | 'deva' }
 
 const splitSections = (code: string): string[] => {
   const out: string[] = [];
@@ -97,6 +98,8 @@ const lexSection = (src: string): Section => {
   const toks: Tok[] = [];
   let color: string | undefined;
   let cond: Cond | undefined;
+  let lcid: number | undefined;
+  let digits: Section['digits'];
   const lit = (v: string): void => {
     const last = toks[toks.length - 1];
     if (last && last.k === 'lit') last.v += v;
@@ -128,6 +131,14 @@ const lexSection = (src: string): Section => {
         const dash = body.indexOf('-', 1);
         const cur = body.slice(1, dash < 0 ? undefined : dash);
         if (cur) lit(cur);
+        // [$-NNCCLLLL]: numeral system, calendar, then the Windows locale id whose names are used.
+        const hex = dash < 0 ? '' : body.slice(dash + 1);
+        if (/^[0-9a-f]{1,8}$/i.test(hex)) {
+          const v = parseInt(hex, 16);
+          lcid = v & 0xffff;
+          const numerals = Math.floor(v / 0x1000000) & 0xff;
+          digits = numerals === 0x02 ? 'arab' : numerals === 0x03 ? 'pers' : numerals === 0x0e ? 'deva' : undefined;
+        }
       }
       // other tags ([DBNum1], [NatNum], ...) are ignored
     } else if (lc === 'g' && /^general/i.test(src.slice(i, i + 7))) { toks.push({ k: 'gen' }); i += 6; }
@@ -178,22 +189,24 @@ const lexSection = (src: string): Section => {
   const kind: Kind = hasDt ? 'date'
     : toks.some((t) => t.k === 'at') ? 'text'
       : toks.some((t) => t.k === 'gen') ? 'general' : 'num';
-  return { toks, color, cond, kind, ampm: toks.some((t) => t.k === 'dt' && (t.v === 'ampm' || t.v === 'ap' || t.v === 'AP')), sub };
+  const sec: Section = { toks, color, cond, kind, ampm: toks.some((t) => t.k === 'dt' && (t.v === 'ampm' || t.v === 'ap' || t.v === 'AP')), sub };
+  if (lcid !== undefined) sec.lcid = lcid;
+  if (digits) sec.digits = digits;
+  return sec;
 };
 
 const cache = new Map<string, Section[]>();
-const SYS_LONG_DATE = 'dddd, mmmm d, yyyy';
-const SYS_TIME = 'h:mm:ss AM/PM';
 
 const parseFormat = (code: string): Section[] => {
-  let hit = cache.get(code);
-  if (hit) return hit;
+  // System long date and system time follow the active locale.
   let c = code;
-  if (/\[\$-F800\]/i.test(c)) c = SYS_LONG_DATE;
-  else if (/\[\$-F400\]/i.test(c)) c = SYS_TIME;
+  if (/\[\$-F800\]/i.test(c)) c = activeLocale().longDate;
+  else if (/\[\$-F400\]/i.test(c)) c = activeLocale().time.replace(/mm(?!:ss)/, 'mm:ss');
+  let hit = cache.get(c);
+  if (hit) return hit;
   hit = splitSections(c).slice(0, 4).map(lexSection);
   if (cache.size > 2000) cache.clear();
-  cache.set(code, hit);
+  cache.set(c, hit);
   return hit;
 };
 
@@ -506,8 +519,6 @@ const renderNumber = (sec: Section, v: number, o: Out): void => {
   if (bare && dot < 0 && !decPh.length) o.add(I);
 };
 
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const p2 = (n: number): string => (n < 10 ? '0' : '') + n;
 
 const renderDate = (sec: Section, v: number, date1904: boolean, o: Out): boolean => {
@@ -523,6 +534,8 @@ const renderDate = (sec: Section, v: number, date1904: boolean, o: Out): boolean
   const { year, month, day: D } = fromSerial(day, date1904);
   const wd = weekdayOf(day, date1904);
   const totalSecs = Math.floor(units / f);
+  const names = namesForLcid(sec.lcid);
+  const MONTHS = names.months, DAYS = names.days;
   for (const t of sec.toks) {
     if (t.k !== 'dt') { passThrough(t, o); continue; }
     const len = t.v.length;
@@ -530,10 +543,10 @@ const renderDate = (sec: Section, v: number, date1904: boolean, o: Out): boolean
     switch (t.v[0]) {
       case 'y': o.add(len <= 2 ? p2(year % 100) : String(year)); break;
       case 'm':
-        o.add(len === 1 ? String(month) : len === 2 ? p2(month) : len === 3 ? MONTHS[month - 1]!.slice(0, 3) : len === 5 ? MONTHS[month - 1]![0]! : MONTHS[month - 1]!);
+        o.add(len === 1 ? String(month) : len === 2 ? p2(month) : len === 3 ? names.monthsShort[month - 1]! : len === 5 ? MONTHS[month - 1]![0]! : MONTHS[month - 1]!);
         break;
       case 'M': o.add(len === 1 ? String(Mi) : p2(Mi)); break;
-      case 'd': o.add(len === 1 ? String(D) : len === 2 ? p2(D) : len === 3 ? DAYS[wd]!.slice(0, 3) : DAYS[wd]!); break;
+      case 'd': o.add(len === 1 ? String(D) : len === 2 ? p2(D) : len === 3 ? names.daysShort[wd]! : DAYS[wd]!); break;
       case 'h': {
         const h = sec.ampm ? ((H + 11) % 12) + 1 : H;
         o.add(len === 1 ? String(h) : p2(h));
@@ -547,7 +560,7 @@ const renderDate = (sec: Section, v: number, date1904: boolean, o: Out): boolean
         break;
       }
       default:
-        if (t.v === 'ampm') o.add(H >= 12 ? 'PM' : 'AM');
+        if (t.v === 'ampm') o.add(H >= 12 ? names.pm : names.am);
         else if (t.v === 'ap' || t.v === 'AP') o.add(H >= 12 ? (t.n ? 'p' : 'P') : t.v === 'ap' ? 'a' : 'A');
     }
   }
@@ -637,6 +650,7 @@ export const formatValue = (v: Scalar, code: string, opts: { date1904?: boolean;
     default:
       renderNumber(sec, n, o);
   }
+  if (sec.digits) o.s = toNativeDigits(o.s, sec.digits);
   return done(o, sec.color, 'right');
 };
 
@@ -655,7 +669,14 @@ export const guessFormat = (input: string): string | undefined => {
   if (!s) return undefined;
   let m: RegExpExecArray | null;
   if ((m = /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)?(\.\d*)?\s*%$/.exec(s)) && /\d/.test(s)) return m[1] && m[1].length > 1 ? '0.00%' : '0%';
-  if ((m = /^\(?[+-]?\$\s*(?:\d{1,3}(?:,\d{3})+|\d+)?(\.\d*)?\)?$/.exec(s)) && /\d/.test(s)) return m[1] && m[1].length > 1 ? '$#,##0.00' : '$#,##0';
+  for (const sym of currencySymbols()) {
+    const e = sym.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const num = '(?:\\d{1,3}(?:,\\d{3})+|\\d+)?(\\.\\d*)?';
+    const pre = new RegExp(`^\\(?[+-]?${e}\\s*[+-]?${num}\\)?$`).exec(s);
+    const post = pre ? null : new RegExp(`^\\(?[+-]?${num}\\s*${e}\\)?$`).exec(s);
+    const hit = pre ?? post;
+    if (hit && /\d/.test(s)) return currencyFormatFor(sym, !!post, !!hit[1] && hit[1].length > 1);
+  }
   if ((m = /^\(?[+-]?\d{1,3}(?:,\d{3})+(\.\d*)?\)?$/.exec(s))) return m[1] && m[1].length > 1 ? '#,##0.00' : '#,##0';
   if (/^[+-]?(\d+\.?\d*|\.\d+)[eE][+-]?\d+$/.test(s)) return '0.00E+00';
   if (/^[+-]?\d+(\.\d*)?$/.test(s)) return undefined;
@@ -670,22 +691,29 @@ export const guessFormat = (input: string): string | undefined => {
   return guessDate(s);
 };
 
-const MON = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+const MON_EN = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
 const validDate = (y: number, mo: number, d: number): boolean => mo >= 1 && mo <= 12 && d >= 1 && d <= new Date(Date.UTC(y, mo, 0)).getUTCDate();
 
 const guessDate = (s: string): string | undefined => {
   let m: RegExpExecArray | null;
+  const n = activeNames();
+  const own = [...n.months, ...n.monthsShort].map((x) => x.replace(/\.$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+  const MON = own.length && n.months[0] !== 'January' ? `(?:${MON_EN}|(?:${own.join('|')})\\.?)` : MON_EN;
   const yr = new Date().getFullYear();
-  if ((m = /^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/.exec(s))) return validDate(+m[1]!, +m[2]!, +m[3]!) ? 'm/d/yyyy' : undefined;
-  if ((m = /^(\d{1,2})[-/](\d{1,2})[-/](\d{2}|\d{4})$/.exec(s))) return validDate(m[3]!.length === 2 ? 2000 + +m[3]! : +m[3]!, +m[1]!, +m[2]!) ? 'm/d/yyyy' : undefined;
-  if ((m = /^(\d{1,2})[-/](\d{1,2})$/.exec(s))) {
-    if (validDate(yr, +m[1]!, +m[2]!)) return 'd-mmm';
+  const dmy = activeLocale().dateOrder === 'DMY';
+  if ((m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(s))) return validDate(+m[1]!, +m[2]!, +m[3]!) ? 'm/d/yyyy' : undefined;
+  if ((m = /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{2}|\d{4})$/.exec(s))) {
+    const y = m[3]!.length === 2 ? 2000 + +m[3]! : +m[3]!;
+    return (dmy ? validDate(y, +m[2]!, +m[1]!) : validDate(y, +m[1]!, +m[2]!)) ? 'm/d/yyyy' : undefined;
+  }
+  if ((m = /^(\d{1,2})[-/.](\d{1,2})\.?$/.exec(s))) {
+    if (dmy ? validDate(yr, +m[2]!, +m[1]!) : validDate(yr, +m[1]!, +m[2]!)) return 'd-mmm';
     // "3/2024" style month/year
     return undefined;
   }
   if ((m = /^(\d{1,2})[-/](\d{4})$/.exec(s))) return +m[1]! >= 1 && +m[1]! <= 12 ? 'mmm-yy' : undefined;
-  if (new RegExp(`^(\\d{1,2})[-\\s/](${MON})$`, 'i').test(s)) return 'd-mmm';
-  if (new RegExp(`^(\\d{1,2})[-\\s/](${MON})[-\\s/,]+(\\d{2}|\\d{4})$`, 'i').test(s)) return 'd-mmm-yy';
+  if (new RegExp(`^(\\d{1,2})\\.?[-\\s/](${MON})$`, 'iu').test(s)) return 'd-mmm';
+  if (new RegExp(`^(\\d{1,2})\\.?[-\\s/](${MON})[-\\s/,]+(\\d{2}|\\d{4})$`, 'iu').test(s)) return 'd-mmm-yy';
   if (new RegExp(`^(${MON})[-\\s/](\\d{1,2})$`, 'i').test(s)) return 'd-mmm';
   if (new RegExp(`^(${MON})\\s+(\\d{1,2})(?:st|nd|rd|th)?,?\\s+(\\d{4})$`, 'i').test(s)) return 'd-mmm-yy';
   if (new RegExp(`^(${MON})[-\\s/](\\d{2}|\\d{4})$`, 'i').test(s)) return 'mmm-yy';

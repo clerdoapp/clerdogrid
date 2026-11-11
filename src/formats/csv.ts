@@ -78,6 +78,16 @@ const convert = (raw: string): [Scalar, string | undefined] => {
   return [n, guessFormat(s)];
 };
 
+/** The fields of a CSV or delimited text file as written, without turning any of them into numbers. */
+export const splitCsv = (text: string, opts: { delimiter?: string } = {}): string[][] => {
+  let t = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  let delim = opts.delimiter;
+  const sep = /^sep=(.)\r?\n/i.exec(t);
+  if (sep) { delim ??= sep[1]; t = t.slice(sep[0].length); }
+  delim ??= detectDelimiter(t);
+  return t === '' ? [] : splitRows(t, delim).map((r) => r.fields);
+};
+
 export const readCsv = (text: string, opts: { delimiter?: string } = {}): { rows: Scalar[][]; formats: (string | undefined)[][] } => {
   let t = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
   let delim = opts.delimiter;

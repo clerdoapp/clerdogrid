@@ -52,6 +52,11 @@ export interface LambdaValue {
   readonly kind: 'lambda';
   readonly params: readonly string[];
   readonly invoke: (args: Value[]) => Value;
+  /** Name shown in GROUPBY/PIVOTBY headers (the function name for SUM passed as a value). */
+  readonly label?: string;
+  /** Several functions stacked with HSTACK/VSTACK, for GROUPBY/PIVOTBY. */
+  readonly list?: readonly LambdaValue[];
+  readonly vertical?: boolean;
 }
 
 export type Value = Scalar | Matrix | RangeRef | RefUnion | LambdaValue;
@@ -97,6 +102,8 @@ export interface FnContext {
   isSubtotalCell(sheet: number, row: number, col: number): boolean;
   /** Number format code of a cell, for CELL("format"). */
   numberFormat(sheet: number, row: number, col: number): string;
+  /** GETPIVOTDATA: a value from the PivotTable that covers a cell. */
+  pivotData?(sheet: number, row: number, col: number, dataField: string, pairs: [string, Scalar][]): Scalar;
 }
 
 export interface FunctionDef {

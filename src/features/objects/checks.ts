@@ -1,6 +1,7 @@
 // Review checks: workbook statistics, accessibility, performance cleanup and spelling helpers.
 import { keyCol, keyRow, addr, type Sheet, type Workbook } from '../../model/workbook';
 import type { GridStore } from '../../app/store';
+import { N, T } from '../../ui/i18n';
 
 // ---------- Contrast (WCAG 2 relative luminance) ----------
 
@@ -42,13 +43,13 @@ export const accessibilityIssues = (wb: Workbook): Issue[] => {
   const out: Issue[] = [];
   wb.sheets.forEach((s, si) => {
     const at = (a: { row: number; col: number }) => addr(a.row, a.col);
-    for (const c of s.charts) if (!c.alt?.trim()) out.push({ kind: 'Missing alt text', sheet: si, where: c.title || 'Chart', text: 'Chart has no alternative text.', tip: 'Describe what the chart shows.', go: c.anchor, object: { type: 'chart', id: c.id } });
-    for (const p of s.pictures) if (!p.alt?.trim()) out.push({ kind: 'Missing alt text', sheet: si, where: `Picture at ${at(p.anchor)}`, text: 'Picture has no alternative text.', tip: 'Describe the picture in a sentence.', go: p.anchor, object: { type: 'picture', id: p.id } });
-    for (const sh of s.shapes ?? []) if (!sh.alt?.trim() && !sh.text?.trim() && sh.kind !== 'line' && sh.kind !== 'arrowLine') out.push({ kind: 'Missing alt text', sheet: si, where: `Shape at ${at(sh.anchor)}`, text: 'Shape has no text or alternative text.', tip: 'Add alt text, or mark it decorative by typing a short label.', go: sh.anchor, object: { type: 'shape', id: sh.id } });
-    for (const m of s.merges) out.push({ kind: 'Merged cells', sheet: si, where: `${addr(m.r1, m.c1)}:${addr(m.r2, m.c2)}`, text: 'Merged cells are hard to move through with a screen reader.', tip: 'Unmerge and use Center across selection instead.', go: { row: m.r1, col: m.c1 } });
-    if (/^Sheet\d+$/i.test(s.name) && s.cells.size) out.push({ kind: 'Default sheet name', sheet: si, where: s.name, text: 'The sheet name does not say what it holds.', tip: 'Rename the sheet.' });
-    if (s.state !== 'visible') out.push({ kind: 'Hidden sheet', sheet: si, where: s.name, text: 'Hidden sheets are easy to miss.', tip: 'Unhide it, or delete it if it is not needed.' });
-    for (const t of s.tables) if (!t.headerRow) out.push({ kind: 'Table without headers', sheet: si, where: t.name, text: 'The table has no header row.', tip: 'Turn on the header row.', go: { row: t.range.r1, col: t.range.c1 } });
+    for (const c of s.charts) if (!c.alt?.trim()) out.push({ kind: N('Missing alt text'), sheet: si, where: c.title || N('Chart'), text: N('Chart has no alternative text.'), tip: N('Describe what the chart shows.'), go: c.anchor, object: { type: 'chart', id: c.id } });
+    for (const p of s.pictures) if (!p.alt?.trim()) out.push({ kind: N('Missing alt text'), sheet: si, where: T('Picture at {p0}', { p0: at(p.anchor) }), text: N('Picture has no alternative text.'), tip: N('Describe the picture in a sentence.'), go: p.anchor, object: { type: 'picture', id: p.id } });
+    for (const sh of s.shapes ?? []) if (!sh.alt?.trim() && !sh.text?.trim() && sh.kind !== 'line' && sh.kind !== 'arrowLine') out.push({ kind: N('Missing alt text'), sheet: si, where: T('Shape at {p0}', { p0: at(sh.anchor) }), text: N('Shape has no text or alternative text.'), tip: N('Add alt text, or mark it decorative by typing a short label.'), go: sh.anchor, object: { type: 'shape', id: sh.id } });
+    for (const m of s.merges) out.push({ kind: N('Merged cells'), sheet: si, where: `${addr(m.r1, m.c1)}:${addr(m.r2, m.c2)}`, text: N('Merged cells are hard to move through with a screen reader.'), tip: N('Unmerge and use Center across selection instead.'), go: { row: m.r1, col: m.c1 } });
+    if (/^Sheet\d+$/i.test(s.name) && s.cells.size) out.push({ kind: N('Default sheet name'), sheet: si, where: s.name, text: N('The sheet name does not say what it holds.'), tip: N('Rename the sheet.') });
+    if (s.state !== 'visible') out.push({ kind: N('Hidden sheet'), sheet: si, where: s.name, text: N('Hidden sheets are easy to miss.'), tip: N('Unhide it, or delete it if it is not needed.') });
+    for (const t of s.tables) if (!t.headerRow) out.push({ kind: N('Table without headers'), sheet: si, where: t.name, text: N('The table has no header row.'), tip: N('Turn on the header row.'), go: { row: t.range.r1, col: t.range.c1 } });
     let n = 0;
     for (const [k, c] of s.cells) {
       if (c.v === null || c.v === '' || n > 200) continue;
@@ -58,7 +59,7 @@ export const accessibilityIssues = (wb: Workbook): Issue[] => {
       const ratio = contrastRatio(fg, bg);
       if (ratio < 4.5) {
         n++;
-        out.push({ kind: 'Hard-to-read text', sheet: si, where: addr(keyRow(k), keyCol(k)), text: `Text contrast is ${ratio.toFixed(1)}:1 (needs 4.5:1).`, tip: 'Use a darker text color or a lighter fill.', go: { row: keyRow(k), col: keyCol(k) } });
+        out.push({ kind: N('Hard-to-read text'), sheet: si, where: addr(keyRow(k), keyCol(k)), text: T('Text contrast is {p0}:1 (needs 4.5:1).', { p0: ratio.toFixed(1) }), tip: N('Use a darker text color or a lighter fill.'), go: { row: keyRow(k), col: keyCol(k) } });
       }
     }
   });
@@ -83,7 +84,7 @@ export const cleanExcessFormatting = (store: GridStore): { removed: number; byte
   const x = excessFormatting(store.sheet);
   const removed = x.cells.length + x.rows.length + x.cols.length;
   if (!removed) return { removed: 0, bytes: 0 };
-  store.change('Clean extra formatting', 'sheet', () => {
+  store.change(N('Clean extra formatting'), 'sheet', () => {
     const s = store.sheet;
     for (const k of x.cells) s.cells.delete(k);
     for (const r of x.rows) { const info = s.rows.get(r)!; delete info.s; if (!Object.keys(info).length) s.rows.delete(r); }

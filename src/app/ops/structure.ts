@@ -1,8 +1,11 @@
+import { structureLocked } from '../protection';
 import { adjustForStructure, deleteSheetInFormula, renameSheetInFormula, type Structural } from '../../engine/refactor';
 import { MAX_COLS, MAX_ROWS } from '../../engine/types';
-import { cellKey, keyCol, keyRow, newSheet, type CellRange, type Sheet } from '../../model/workbook';
+import { cellKey, keyCol, keyRow, newUserSheet, type CellRange, type Sheet } from '../../model/workbook';
 import { cloneSheet } from '../clone';
 import type { GridStore } from '../store';
+import { renamePivotSheet, shiftPivots } from './outline';
+import { N, T } from '../../ui/i18n';
 
 const shiftRange = (r: CellRange, op: Structural): CellRange | null => {
   const del = op.count < 0 ? -op.count : 0;
@@ -57,13 +60,14 @@ export const changeStructure = (store: GridStore, axis: 'row' | 'col', at: numbe
   if (count > 0) {
     // Refuse to push data off the end of the sheet, as spreadsheets do.
     const last = axis === 'row' ? MAX_ROWS : MAX_COLS;
-    for (const k of sheet.cells.keys()) if ((axis === 'row' ? keyRow(k) : keyCol(k)) + count >= last) { store.notify("There isn't room to insert: data would be pushed off the end of the sheet."); return; }
+    for (const k of sheet.cells.keys()) if ((axis === 'row' ? keyRow(k) : keyCol(k)) + count >= last) { store.notify(T('There isn\'t room to insert: data would be pushed off the end of the sheet.')); return; }
   }
   if (count < 0 && sheet.tables.some((t) => (axis === 'row' ? t.range.r1 >= at && t.range.r1 < at - count && t.headerRow : false))) {
-    store.notify('That would delete a table header row. Convert the table to a range first.');
+    store.notify(T('That would delete a table header row. Convert the table to a range first.'));
     return;
   }
-  store.change(count > 0 ? `Insert ${axis === 'row' ? 'rows' : 'columns'}` : `Delete ${axis === 'row' ? 'rows' : 'columns'}`, 'book', () => {
+  store.change(count > 0 ? (axis === 'row' ? N('Insert rows') : N('Insert columns')) : axis === 'row' ? N('Delete rows') : N('Delete columns'), 'book', () => {
+    store.markOp({ kind: 'struct', sheet: sheetIdx, name: sheet.name, cid: sheet.cid, axis, at, count });
     store.wb.sheets.forEach((s, si) => {
       for (const c of s.cells.values()) {
         if (c.f) c.f = adjustForStructure(c.f, s.name, op);
@@ -81,8 +85,25 @@ export const changeStructure = (store: GridStore, axis: 'row' | 'col', at: numbe
         ser.values = adjustForStructure(ser.values, s.name, op);
         if (ser.categories) ser.categories = adjustForStructure(ser.categories, s.name, op);
         if (ser.name) ser.name = adjustForStructure(ser.name, s.name, op);
+        if (ser.sizes) ser.sizes = adjustForStructure(ser.sizes, s.name, op);
+        if (ser.labels?.fromCells) ser.labels.fromCells = adjustForStructure(ser.labels.fromCells, s.name, op);
+        for (const e of ser.errorBars ?? []) { if (e.plus) e.plus = adjustForStructure(e.plus, s.name, op); if (e.minus) e.minus = adjustForStructure(e.minus, s.name, op); }
+      }
+      for (const g of s.sparklines ?? []) {
+        for (const sp of g.sparklines) sp.ref = adjustForStructure(sp.ref, s.name, op);
+        if (g.dateRange) g.dateRange = adjustForStructure(g.dateRange, s.name, op);
       }
     });
+    if (sheet.sparklines) {
+      // Sparkline cells move with their rows and columns; those in deleted ones go.
+      for (const g of sheet.sparklines) g.sparklines = g.sparklines.flatMap((sp) => {
+        const p = axis === 'row' ? sp.row : sp.col;
+        if (count < 0 && p >= at && p < at - count) return [];
+        if (p >= at) { if (axis === 'row') sp.row = p + count; else sp.col = p + count; }
+        return [sp];
+      });
+      sheet.sparklines = sheet.sparklines.filter((g) => g.sparklines.length);
+    }
     for (const n of store.wb.names) n.formula = adjustForStructure(n.formula, n.sheet !== undefined ? store.wb.sheets[n.sheet]!.name : sheet.name, { ...op });
     sheet.cells = shiftIndexMap(sheet.cells, op, 'cell');
     sheet.hyperlinks = shiftIndexMap(sheet.hyperlinks, op, 'cell');
@@ -95,6 +116,7 @@ export const changeStructure = (store: GridStore, axis: 'row' | 'col', at: numbe
     sheet.validations = sheet.validations.filter((dv) => dv.ranges.length);
     for (const t of sheet.tables) { const r = shiftRange(t.range, op); if (r) t.range = r; }
     if (sheet.autoFilter) { const r = shiftRange(sheet.autoFilter.range, op); if (r) sheet.autoFilter.range = r; else delete sheet.autoFilter; }
+    shiftPivots(store.wb, sheetIdx, axis, at, count);
     for (const ch of [...sheet.charts, ...sheet.pictures]) {
       const p = axis === 'row' ? ch.anchor.row : ch.anchor.col;
       if (p >= at) { const np = count > 0 ? p + count : Math.max(at, p + count); if (axis === 'row') ch.anchor.row = np; else ch.anchor.col = np; }
@@ -111,7 +133,7 @@ export const changeStructure = (store: GridStore, axis: 'row' | 'col', at: numbe
 export const shiftCells = (store: GridStore, r: CellRange, dir: 'down' | 'right' | 'up' | 'left'): void => {
   const sheet = store.sheet;
   const h = r.r2 - r.r1 + 1, w = r.c2 - r.c1 + 1;
-  store.change('Shift cells', 'book', () => {
+  store.change(N('Shift cells'), 'book', () => {
     const moved = new Map<number, ReturnType<typeof sheet.cells.get>>();
     const keep = new Map(sheet.cells);
     const inBand = (row: number, col: number) => (dir === 'down' || dir === 'up' ? col >= r.c1 && col <= r.c2 : row >= r.r1 && row <= r.r2);
@@ -147,17 +169,18 @@ export const nextSheetName = (store: GridStore): string => {
 
 export const validSheetName = (store: GridStore, name: string, except?: number): string | null => {
   const n = name.trim();
-  if (!n) return 'A sheet name can\'t be empty.';
-  if (n.length > 31) return 'Sheet names can be at most 31 characters.';
-  if (/[\\/?*[\]:]/.test(n) || n.startsWith("'") || n.endsWith("'")) return 'Sheet names can\'t contain \\ / ? * [ ] : or start or end with an apostrophe.';
-  if (n.toLowerCase() === 'history') return '"History" is a reserved name.';
-  if (store.wb.sheets.some((s, i) => i !== except && s.name.toLowerCase() === n.toLowerCase())) return 'Another sheet already has that name.';
+  if (!n) return T('A sheet name can\'t be empty.');
+  if (n.length > 31) return T('Sheet names can be at most 31 characters.');
+  if (/[\\/?*[\]:]/.test(n) || n.startsWith("'") || n.endsWith("'")) return T('Sheet names can\'t contain \\ / ? * [ ] : or start or end with an apostrophe.');
+  if (n.toLowerCase() === 'history') return T('"History" is a reserved name.');
+  if (store.wb.sheets.some((s, i) => i !== except && s.name.toLowerCase() === n.toLowerCase())) return T('Another sheet already has that name.');
   return null;
 };
 
 export const addSheet = (store: GridStore, at = store.sheetIndex + 1, name = nextSheetName(store)): void => {
-  store.change('Insert sheet', 'book', () => {
-    store.wb.sheets.splice(at, 0, newSheet(name));
+  if (structureLocked(store)) return;
+  store.change(N('Insert sheet'), 'book', () => {
+    store.wb.sheets.splice(at, 0, newUserSheet(name));
     fixSheetIndexes(store, (i) => (i >= at ? i + 1 : i));
     store.wb.activeSheet = at;
     store.engine.sheetsChanged();
@@ -166,8 +189,9 @@ export const addSheet = (store: GridStore, at = store.sheetIndex + 1, name = nex
 };
 
 export const duplicateSheet = (store: GridStore, i = store.sheetIndex): void => {
+  if (structureLocked(store)) return;
   const src = store.wb.sheets[i]!;
-  store.change('Duplicate sheet', 'book', () => {
+  store.change(N('Duplicate sheet'), 'book', () => {
     const copy = cloneSheet(src);
     copy.name = uniqueName(store, src.name);
     copy.tables = copy.tables.map((t) => ({ ...t, name: `${t.name}_${Math.random().toString(36).slice(2, 6)}` }));
@@ -180,11 +204,12 @@ export const duplicateSheet = (store: GridStore, i = store.sheetIndex): void => 
 };
 
 export const renameSheet = (store: GridStore, i: number, name: string): boolean => {
+  if (store.wb.sheets[i]?.name !== name.trim() && structureLocked(store)) return false;
   const err = validSheetName(store, name, i);
   if (err) { store.notify(err); return false; }
   const old = store.wb.sheets[i]!.name;
   if (old === name.trim()) return true;
-  store.change('Rename sheet', 'book', () => {
+  store.change(N('Rename sheet'), 'book', () => {
     const nn = name.trim();
     for (const s of store.wb.sheets) {
       for (const c of s.cells.values()) if (c.f) c.f = renameSheetInFormula(c.f, old, nn);
@@ -195,6 +220,7 @@ export const renameSheet = (store: GridStore, i: number, name: string): boolean 
       }
     }
     for (const n of store.wb.names) n.formula = renameSheetInFormula(n.formula, old, nn);
+    renamePivotSheet(store.wb, old, nn);
     store.wb.sheets[i]!.name = nn;
     store.engine.sheetsChanged();
     store.engine.recalc(true);
@@ -203,9 +229,10 @@ export const renameSheet = (store: GridStore, i: number, name: string): boolean 
 };
 
 export const deleteSheet = (store: GridStore, i = store.sheetIndex): void => {
-  if (store.wb.sheets.filter((s) => s.state === 'visible').length <= 1 && store.wb.sheets[i]!.state === 'visible') { store.notify('A workbook needs at least one visible sheet.'); return; }
+  if (structureLocked(store)) return;
+  if (store.wb.sheets.filter((s) => s.state === 'visible').length <= 1 && store.wb.sheets[i]!.state === 'visible') { store.notify(T('A workbook needs at least one visible sheet.')); return; }
   const name = store.wb.sheets[i]!.name;
-  store.change('Delete sheet', 'book', () => {
+  store.change(N('Delete sheet'), 'book', () => {
     store.wb.sheets.splice(i, 1);
     for (const s of store.wb.sheets) for (const c of s.cells.values()) if (c.f) c.f = deleteSheetInFormula(c.f, name);
     store.wb.names = store.wb.names.filter((n) => n.sheet !== i).map((n) => ({ ...n, formula: deleteSheetInFormula(n.formula, name) }));
@@ -219,8 +246,9 @@ export const deleteSheet = (store: GridStore, i = store.sheetIndex): void => {
 };
 
 export const moveSheet = (store: GridStore, from: number, to: number): void => {
+  if (from !== to && structureLocked(store)) return;
   if (from === to) return;
-  store.change('Move sheet', 'book', () => {
+  store.change(N('Move sheet'), 'book', () => {
     const [s] = store.wb.sheets.splice(from, 1);
     store.wb.sheets.splice(to, 0, s!);
     const map = (x: number) => (x === from ? to : from < to && x > from && x <= to ? x - 1 : from > to && x >= to && x < from ? x + 1 : x);
@@ -236,8 +264,9 @@ const fixSheetIndexes = (store: GridStore, map: (i: number) => number): void => 
 };
 
 export const setSheetState = (store: GridStore, i: number, state: Sheet['state']): void => {
-  if (state !== 'visible' && store.wb.sheets.filter((s) => s.state === 'visible').length <= 1) { store.notify('A workbook needs at least one visible sheet.'); return; }
-  store.change(state === 'visible' ? 'Unhide sheet' : 'Hide sheet', 'book', () => {
+  if (structureLocked(store)) return;
+  if (state !== 'visible' && store.wb.sheets.filter((s) => s.state === 'visible').length <= 1) { store.notify(T('A workbook needs at least one visible sheet.')); return; }
+  store.change(state === 'visible' ? N('Unhide sheet') : N('Hide sheet'), 'book', () => {
     store.wb.sheets[i]!.state = state;
     if (state !== 'visible' && store.wb.activeSheet === i) store.wb.activeSheet = store.wb.sheets.findIndex((s) => s.state === 'visible');
     if (state === 'visible') store.wb.activeSheet = i;

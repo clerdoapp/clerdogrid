@@ -1,4 +1,5 @@
 import { CellError, Err, isError, isLambda, type FnContext, type FunctionDef, type Scalar, type Value } from '../types';
+import { compileRegex, expandReplacement, RegexError, toCodePoints, type Regex } from '../regex';
 import { cellsOf, first, fromRange, int, num, optBool, optNum, parseNumber, text, toMatrix, toText } from '../coerce';
 
 export const MAX_TEXT = 32767;
@@ -167,29 +168,26 @@ const formatArg = (v: Value | undefined, ctx: FnContext): boolean | CellError =>
 };
 
 // ---- Regular expressions: formulas use PCRE2; this maps the common syntax onto JavaScript's engine.
-const toRegExp = (pattern: string, insensitive: boolean, global: boolean): RegExp | CellError => {
-  let p = pattern, flags = 'u' + (global ? 'g' : '');
-  const inline = /^\(\?([imsx]+)\)/.exec(p);
-  let extended = false;
-  if (inline) {
-    p = p.slice(inline[0].length);
-    if (inline[1]!.includes('i')) insensitive = true;
-    if (inline[1]!.includes('m')) flags += 'm';
-    if (inline[1]!.includes('s')) flags += 's';
-    extended = inline[1]!.includes('x');
-  }
-  if (insensitive) flags += 'i';
-  if (extended) p = p.replace(/\\#/g, '\u0000').replace(/#.*$/gm, '').replace(/\s+/g, '').replace(/\u0000/g, '\\#');
-  p = p.replace(/\(\?P</g, '(?<').replace(/\(\?P=(\w+)\)/g, '\\k<$1>').replace(/\\A/g, '^').replace(/\\[zZ]/g, '$')
-    .replace(/\[:alpha:\]/g, 'a-zA-Z').replace(/\[:digit:\]/g, '0-9').replace(/\[:alnum:\]/g, 'a-zA-Z0-9')
-    .replace(/\[:space:\]/g, '\\s').replace(/\[:upper:\]/g, 'A-Z').replace(/\[:lower:\]/g, 'a-z').replace(/\[:punct:\]/g, '!-\\/:-@\\[-`{-~');
-  if (/\(\?>|[*+?}]\+/.test(p)) return Err.value; // atomic groups and possessive quantifiers have no JS equivalent
-  try { return new RegExp(p, flags); } catch { return Err.value; }
+/** Compiles a PCRE2-style pattern; a bad pattern (or one that runs away) is #VALUE!. */
+const toRegex = (pattern: string, insensitive: boolean): Regex | CellError => {
+  try { return compileRegex(pattern, insensitive); } catch (e) { if (e instanceof RegexError) return Err.value; throw e; }
+};
+const guard = <T>(f: () => T): T | CellError => {
+  try { return f(); } catch (e) { if (e instanceof RegexError) return Err.value; throw e; }
 };
 const caseArg = (v: Value | undefined, ctx: FnContext): boolean | CellError => {
   const c = optNum(v, ctx, 0);
   if (isError(c)) return c;
-  return c === 0 ? false : c === 1 ? true : Err.value;
+  const k = Math.trunc(c);
+  return k === 0 ? false : k === 1 ? true : Err.value;
+};
+
+const regexTest = (args: Value[], ctx: FnContext): Value => {
+  const s = text(args[0]!, ctx); if (isError(s)) return s;
+  const p = text(args[1]!, ctx); if (isError(p)) return p;
+  const ci = caseArg(args[2], ctx); if (isError(ci)) return ci;
+  const re = toRegex(p, ci); if (isError(re)) return re;
+  return guard(() => re.test(s));
 };
 
 const regexExtract = (args: Value[], ctx: FnContext): Value => {
@@ -197,17 +195,19 @@ const regexExtract = (args: Value[], ctx: FnContext): Value => {
   const p = text(args[1]!, ctx); if (isError(p)) return p;
   const mode = optNum(args[2], ctx, 0); if (isError(mode)) return mode;
   const ci = caseArg(args[3], ctx); if (isError(ci)) return ci;
-  if (mode !== 0 && mode !== 1 && mode !== 2) return Err.value;
-  const re = toRegExp(p, ci, mode === 1);
-  if (isError(re)) return re;
-  if (mode === 1) {
-    const all = [...s.matchAll(re)].map((m) => [m[0]] as Scalar[]);
-    return all.length ? all : Err.na;
-  }
-  const m = re.exec(s);
-  if (!m) return Err.na;
-  if (mode === 0) return m[0];
-  return m.length > 1 ? [m.slice(1).map((g) => g ?? '')] : Err.na;
+  const md = Math.trunc(mode);
+  if (md !== 0 && md !== 1 && md !== 2) return Err.value;
+  const re = toRegex(p, ci); if (isError(re)) return re;
+  return guard((): Value => {
+    if (md === 1) {
+      const all = re.matchAll(s).map((m) => [m.whole] as Scalar[]);
+      return all.length ? all : Err.na;
+    }
+    const m = re.exec(s);
+    if (!m) return Err.na;
+    if (md === 0) return m.whole;
+    return m.groups.length ? [m.groups.map((g) => g ?? '')] : Err.na;
+  });
 };
 
 const regexReplace = (args: Value[], ctx: FnContext): Value => {
@@ -216,31 +216,24 @@ const regexReplace = (args: Value[], ctx: FnContext): Value => {
   const r = text(args[2]!, ctx); if (isError(r)) return r;
   const occ = optNum(args[3], ctx, 0); if (isError(occ)) return occ;
   const ci = caseArg(args[4], ctx); if (isError(ci)) return ci;
-  const re = toRegExp(p, ci, true);
-  if (isError(re)) return re;
-  const repl = r.replace(/\$\{(\w+)\}/g, (_m, g: string) => (/^\d+$/.test(g) ? `$${g}` : `$<${g}>`));
-  const n = Math.trunc(occ);
-  if (n === 0) return out(s.replace(re, repl));
-  const total = [...s.matchAll(re)].length;
-  const target = n > 0 ? n : total + n + 1;
-  if (target < 1 || target > total) return s;
-  let k = 0;
-  return out(s.replace(re, (...m: unknown[]) => {
-    const groups = typeof m[m.length - 1] === 'object' ? (m[m.length - 1] as Record<string, string | undefined>) : undefined;
-    const caps = m.slice(1, groups ? -3 : -2) as Array<string | undefined>;
-    return ++k === target ? expand(repl, m[0] as string, caps, groups) : (m[0] as string);
-  }));
-};
-
-/** JavaScript's replacement-pattern expansion ($&, $1, $<name>, $$) for a single match. */
-const expand = (r: string, whole: string, caps: Array<string | undefined>, groups?: Record<string, string | undefined>): string =>
-  r.replace(/\$(\$|&|<(\w+)>|(\d{1,2}))/g, (tok, _a, name: string | undefined, d: string | undefined) => {
-    if (tok === '$$') return '$';
-    if (tok === '$&') return whole;
-    if (name !== undefined) return groups?.[name] ?? '';
-    const i = Number(d);
-    return i >= 1 && i <= caps.length ? caps[i - 1] ?? '' : tok;
+  const re = toRegex(p, ci); if (isError(re)) return re;
+  return guard((): Value => {
+    const all = re.matchAll(s);
+    const n = Math.trunc(occ);
+    const target = n === 0 ? 0 : n > 0 ? n : all.length + n + 1;
+    if (n !== 0 && (target < 1 || target > all.length)) return s;
+    const cps = toCodePoints(s);
+    const slice = (a: number, b: number): string => String.fromCodePoint(...cps.slice(a, b));
+    let res = '', at = 0;
+    all.forEach((m, idx) => {
+      if (target !== 0 && idx + 1 !== target) return;
+      res += slice(at, m.start) + expandReplacement(r, re, m);
+      at = m.end;
+    });
+    res += slice(at, cps.length);
+    return out(res);
   });
+};
 
 // ---- TEXTBEFORE / TEXTAFTER / TEXTSPLIT
 
@@ -443,16 +436,7 @@ export const defs: FunctionDef[] = [
   },
   { name: 'REGEXEXTRACT', min: 2, max: 4, scalar: true, fn: regexExtract },
   { name: 'REGEXREPLACE', min: 3, max: 5, scalar: true, fn: regexReplace },
-  {
-    name: 'REGEXTEST', min: 2, max: 3, scalar: true,
-    fn: ([a, b, c], ctx) => {
-      const s = text(a!, ctx); if (isError(s)) return s;
-      const p = text(b!, ctx); if (isError(p)) return p;
-      const ci = caseArg(c, ctx); if (isError(ci)) return ci;
-      const re = toRegExp(p, ci, false);
-      return isError(re) ? re : re.test(s);
-    },
-  },
+  { name: 'REGEXTEST', min: 2, max: 3, scalar: true, fn: regexTest },
   { name: 'REPLACE', min: 4, max: 4, scalar: true, fn: replace },
   { name: 'REPLACEB', min: 4, max: 4, scalar: true, fn: replace },
   {
@@ -515,6 +499,4 @@ export const defs: FunctionDef[] = [
       return out(valueText(isLambda(v!) ? Err.calc : (v as Scalar), strict));
     },
   },
-  { name: 'DETECTLANGUAGE', min: 1, max: 1, fn: () => new CellError('#CONNECT!') },
-  { name: 'TRANSLATE', min: 1, max: 3, fn: () => new CellError('#CONNECT!') },
 ];

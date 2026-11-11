@@ -7,7 +7,7 @@
   <summary>Free spreadsheet app</summary>
   <developer id="app.clerdo"><name>Clerdo</name></developer>
   <description>
-    <p>Calculate, analyse and chart data. ClerdoGrid opens and saves .xlsx and .csv workbooks and works offline.</p>
+    <p>Calculate, analyse and chart data. ClerdoGrid opens and saves .xlsx, .ods, .xls and .csv workbooks, opens .xlsb, and works offline.</p>
     <ul>
       <li>About 500 worksheet functions, dynamic arrays, LET and LAMBDA</li>
       <li>Charts, conditional formatting, tables, filters, sorting and data validation</li>
@@ -23,6 +23,11 @@
   <provides>
     <binary>clerdogrid</binary>
     <mediatype>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</mediatype>
+    <mediatype>application/vnd.ms-excel.sheet.macroEnabled.12</mediatype>
+    <mediatype>application/vnd.ms-excel.sheet.binary.macroEnabled.12</mediatype>
+    <mediatype>application/vnd.ms-excel</mediatype>
+    <mediatype>application/vnd.oasis.opendocument.spreadsheet</mediatype>
+    <mediatype>application/vnd.oasis.opendocument.spreadsheet-template</mediatype>
     <mediatype>text/csv</mediatype>
   </provides>
   <releases><release version="0.5.0" date="2026-11-07"><description><p>First release.</p></description></release></releases>

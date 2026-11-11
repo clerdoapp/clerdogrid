@@ -1,6 +1,8 @@
 // spreadsheet date serials. In the 1900 system serial 1 is 1900-01-01 and serial 60 is the
 // non-existent 1900-02-29 that spreadsheets keep for compatibility; in the 1904 system serial 0 is 1904-01-01.
 
+import { activeLocale, activeNames } from '../formats/locales';
+
 const DAY_MS = 86_400_000;
 const EPOCH_1900 = Date.UTC(1899, 11, 30);
 const EPOCH_1904 = Date.UTC(1904, 0, 1);
@@ -61,9 +63,18 @@ export const nowSerial = (date1904 = false, at = new Date()): number => {
 export const todaySerial = (date1904 = false, at = new Date()): number => toSerial(at.getFullYear(), at.getMonth() + 1, at.getDate(), date1904);
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+const FULL = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+/** English month names (full, or any prefix of three letters or more), then the active locale's names. */
 const monthIndex = (s: string): number => {
-  const i = MONTHS.indexOf(s.slice(0, 3).toLowerCase());
-  return i < 0 ? -1 : i + 1;
+  const low = s.toLowerCase().replace(/\.$/, '');
+  const i = MONTHS.indexOf(low.slice(0, 3));
+  if (i >= 0 && FULL[i]!.startsWith(low)) return i + 1;
+  const n = activeNames();
+  for (const list of [n.months, n.monthsShort]) {
+    const k = list.findIndex((x) => x.toLowerCase().replace(/\.$/, '') === low);
+    if (k >= 0) return k + 1;
+  }
+  return -1;
 };
 
 const parseTime = (s: string): number | null => {
@@ -106,12 +117,22 @@ export const parseDateTime = (input: string, date1904 = false): number | null =>
   };
   let m: RegExpExecArray | null;
   let y = 0, mo = 0, d = 0;
-  if ((m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/.exec(s))) { y = +m[1]!; mo = +m[2]!; d = +m[3]!; }
-  else if ((m = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/.exec(s))) { mo = +m[1]!; d = +m[2]!; y = year(m[3]!); }
-  else if ((m = /^(\d{1,2})[/\-](\d{1,2})$/.exec(s))) { mo = +m[1]!; d = +m[2]!; y = thisYear; }
-  else if ((m = /^(\d{1,2})[\s\-/]+([a-z]{3,9})\.?(?:[\s\-/,]+(\d{2,4}))?$/i.exec(s))) { d = +m[1]!; mo = monthIndex(m[2]!); y = m[3] ? year(m[3]) : thisYear; }
-  else if ((m = /^([a-z]{3,9})\.?[\s\-/]+(\d{1,2})(?:(?:st|nd|rd|th)?,?[\s\-/]+(\d{4}))?$/i.exec(s))) { mo = monthIndex(m[1]!); d = +m[2]!; y = m[3] ? +m[3] : thisYear; }
-  else if ((m = /^([a-z]{3,9})\.?[\s\-/]+(\d{4})$/i.exec(s))) { mo = monthIndex(m[1]!); d = 1; y = +m[2]!; }
+  const order = activeLocale().dateOrder;
+  if ((m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})\.?$/.exec(s))) { y = +m[1]!; mo = +m[2]!; d = +m[3]!; }
+  else if ((m = /^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/.exec(s))) {
+    // Numbers only: the region decides which is the day and which the month.
+    if (order === 'DMY') { d = +m[1]!; mo = +m[2]!; } else { mo = +m[1]!; d = +m[2]!; }
+    y = year(m[3]!);
+  }
+  else if ((m = /^(\d{1,2})[/\-.](\d{1,2})\.?$/.exec(s)) && (order !== 'MDY' || !s.includes('.'))) {
+    if (order === 'MDY') { mo = +m[1]!; d = +m[2]!; }
+    else if (order === 'DMY') { d = +m[1]!; mo = +m[2]!; }
+    else { mo = +m[1]!; d = +m[2]!; }
+    y = thisYear;
+  }
+  else if ((m = /^(\d{1,2})\.?[\s\-/]+(\p{L}{3,}\.?)(?:[\s\-/,]+(\d{2,4}))?$/iu.exec(s))) { d = +m[1]!; mo = monthIndex(m[2]!); y = m[3] ? year(m[3]) : thisYear; }
+  else if ((m = /^(\p{L}{3,}\.?)[\s\-/]+(\d{1,2})(?:(?:st|nd|rd|th)?,?[\s\-/]+(\d{4}))?$/iu.exec(s))) { mo = monthIndex(m[1]!); d = +m[2]!; y = m[3] ? +m[3] : thisYear; }
+  else if ((m = /^(\p{L}{3,}\.?)[\s\-/]+(\d{4})$/iu.exec(s))) { mo = monthIndex(m[1]!); d = 1; y = +m[2]!; }
   else return null;
   if (mo < 1 || !valid(y, mo, d)) return null;
   return toSerial(y, mo, d, date1904);

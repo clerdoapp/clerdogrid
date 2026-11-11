@@ -5,6 +5,8 @@ import { colIndex, colName, type CellRange, type Chart, type ChartSeries, type C
 import { displayText } from '../../app/ops/clipboard';
 import type { GridStore } from '../../app/store';
 import { comboKind, traits, type SeriesKind } from './chartTypes';
+import { parseNumberList } from './trend';
+import { N } from '../i18n';
 
 // ---------- Axis ticks ----------
 
@@ -106,13 +108,17 @@ const labelColumns = (m: Scalar[][], h: Headers): number => {
 };
 
 export const buildSeries = (sheet: string, r: CellRange, m: Scalar[][], opts: { orientation?: Orientation; headers?: Headers; type?: ChartType } = {}): ChartSeries[] => {
-  const h = opts.headers ?? detectHeaders(m);
+  let h = opts.headers ?? detectHeaders(m);
   const type = opts.type ?? 'column';
-  const fam = traits(type).family;
+  const tr0 = traits(type);
+  const fam = tr0.family;
   const hierarchy = fam === 'treemap' || fam === 'sunburst';
   const xy = fam === 'scatter' || fam === 'bubble';
+  // Stock data starts with a column of dates when there's one more column than prices.
+  const stockCols = 3 + (tr0.open ? 1 : 0) + (tr0.volume ? 1 : 0);
+  if (fam === 'stock' && !h.firstCol && (m[0]?.length ?? 0) > stockCols) h = { ...h, firstCol: true };
   // Hierarchy charts read every leading text column as a level; their data always runs down columns.
-  const orient = hierarchy ? 'cols' : opts.orientation ?? (xy ? 'cols' : defaultOrientation(m, h));
+  const orient = hierarchy ? 'cols' : opts.orientation ?? (xy || fam === 'stock' ? 'cols' : defaultOrientation(m, h));
   const labelCols = hierarchy ? labelColumns(m, h) : h.firstCol ? 1 : 0;
   const top = r.r1 + (h.firstRow ? 1 : 0), left = r.c1 + (orient === 'cols' ? labelCols : h.firstCol ? 1 : 0);
   if (top > r.r2 || left > r.c2) return [];
@@ -186,6 +192,11 @@ export const recommendTypes = (m: Scalar[][], h: Headers = detectHeaders(m)): Ch
   const longLabels = labels.some((v) => typeof v === 'string' && v.length > 14);
   const out: ChartType[] = [];
   const push = (...t: ChartType[]) => { for (const x of t) if (!out.includes(x)) out.push(x); };
+  // Column names that say what the data is: prices, or places.
+  const header = h.firstRow ? m[0]!.map((v) => (typeof v === 'string' ? v.toLowerCase() : '')) : [];
+  const named = (w: string) => header.some((x) => x.includes(w));
+  if (named('high') && named('low') && named('close')) push(named('volume') ? (named('open') ? 'stockVOHLC' : 'stockVHLC') : named('open') ? 'stockOHLC' : 'stockHLC');
+  if (h.firstCol && seriesCount === 1 && /countr|state|nation|region|province|territor/.test(header[0] ?? '')) push('regionMap');
   if (!h.firstCol && !h.firstRow && seriesCount >= 2 && o === 'cols' && nums.length === body.flat().filter((v) => v !== null).length) push('scatter');
   if (timeLike || points > 12) push('line', 'column', 'area');
   if (seriesCount === 1 && points <= 8 && nums.length && nums.every((n) => n >= 0)) push(longLabels ? 'bar' : 'column', 'pie', 'doughnut');
@@ -205,6 +216,15 @@ export interface ResolvedSeries {
   sizes: (number | null)[] | null;
   /** Measured on the second value axis. */
   secondary: boolean;
+  /** Position in chart.series. */
+  index: number;
+  src: ChartSeries;
+  /** This series' own x values (scatter and bubble). */
+  xs: (number | null)[] | null;
+  /** Label text per point from the label range, when set. */
+  cellLabels?: string[];
+  /** Custom error amounts per error-bar set. */
+  errors?: { plus?: (number | null)[]; minus?: (number | null)[] }[];
 }
 export interface ResolvedChart {
   categories: string[];
@@ -215,11 +235,17 @@ export interface ResolvedChart {
   series: ResolvedSeries[];
   /** Number format for axis and label text: the chart's own, else that of the first value cell. */
   fmt: string;
+  /** Category cell values (numbers or null) and their format, for date axes. */
+  catValues: (number | null)[];
+  catFmt: string;
+  /** Title texts with cell links resolved. */
+  title?: string;
+  axisTitles: { x?: string; y?: string; y2?: string };
 }
 
 export const PALETTE_SIZE = 10;
 export const STYLE_COUNT = 5;
-export const STYLE_NAMES = ['Mixed', 'Greens', 'Forest and sun', 'Mint and slate', 'Soft'];
+export const STYLE_NAMES = [N('Mixed'), N('Greens'), N('Forest and sun'), N('Mint and slate'), N('Soft')];
 const STYLE_SIZE = 8;
 /** Colour of series (or slice) `i` in colour set `style`; a series' own colour wins. */
 export const seriesColor = (i: number, custom?: string, style = 0): string => {
@@ -228,7 +254,7 @@ export const seriesColor = (i: number, custom?: string, style = 0): string => {
   return `var(--chart-s${style}-${(i % STYLE_SIZE) + 1})`;
 };
 
-/** Series indexes on the second axis, including the default for the two-axis combo. */
+/** Series indexes on the second axis, including the defaults for the two-axis combo and volume stock charts. */
 export const secondaryOf = (chart: Chart): Set<number> => {
   if (chart.options?.secondary) return new Set(chart.options.secondary);
   if (chart.type === 'comboSecondary') return new Set(chart.series.flatMap((s, i) => ((s.type ?? comboKind(chart.type, i, chart.series.length)) === 'line' ? [i] : [])));
@@ -237,61 +263,103 @@ export const secondaryOf = (chart: Chart): Set<number> => {
 
 const MAX_POINTS = 4000;
 
-interface Cells { values: Scalar[]; texts: string[]; fmt: string }
+interface Cells { values: Scalar[]; texts: string[]; fmt: string; hidden: boolean[] }
+
+const sheetOf = (store: GridStore, name: string | undefined, sheetIdx: number): number =>
+  name === undefined ? sheetIdx : store.wb.sheets.findIndex((s) => s.name.toLowerCase() === name.toLowerCase());
 
 const readFormula = (store: GridStore, formula: string, sheetIdx: number): Cells => {
   const p = parseRef(formula);
   if (p) {
-    const si = p.sheet === undefined ? sheetIdx : store.wb.sheets.findIndex((s) => s.name.toLowerCase() === p.sheet!.toLowerCase());
-    if (si < 0) return { values: [], texts: [], fmt: 'General' };
+    const si = sheetOf(store, p.sheet, sheetIdx);
+    if (si < 0) return { values: [], texts: [], fmt: 'General', hidden: [] };
+    const sh = store.wb.sheets[si]!;
     const r = p.range;
     const bounds = store.engine.usedBounds(si);
     const r2 = Math.min(r.r2, Math.max(r.r1, bounds.rows)), c2 = Math.min(r.c2, Math.max(r.c1, bounds.cols));
-    const values: Scalar[] = [], texts: string[] = [];
+    const values: Scalar[] = [], texts: string[] = [], hidden: boolean[] = [];
     for (let row = r.r1; row <= r2; row++) for (let col = r.c1; col <= c2; col++) {
       if (values.length >= MAX_POINTS) break;
       values.push(store.value(row, col, si));
       texts.push(displayText(store, row, col, si));
+      hidden.push(!!sh.rows.get(row)?.hidden || !!sh.cols.get(col)?.hidden);
     }
-    return { values, texts, fmt: store.engine.numberFormat(si, r.r1, r.c1) };
+    return { values, texts, fmt: store.engine.numberFormat(si, r.r1, r.c1), hidden };
   }
+  const list = parseNumberList(formula);
+  if (list) return { values: list, texts: list.map(String), fmt: 'General', hidden: list.map(() => false) };
   try {
     const v = store.engine.evaluate(formula.replace(/^=/, ''), sheetIdx, 0, 0);
     const values = (isMatrix(v) ? v.flat() : [v]).slice(0, MAX_POINTS);
-    return { values, texts: values.map((x) => (x === null ? '' : String(typeof x === 'object' ? x.code : x))), fmt: 'General' };
+    return { values, texts: values.map((x) => (x === null ? '' : String(typeof x === 'object' ? x.code : x))), fmt: 'General', hidden: values.map(() => false) };
   } catch {
-    return { values: [], texts: [], fmt: 'General' };
+    return { values: [], texts: [], fmt: 'General', hidden: [] };
   }
 };
+
+/** Text of a title: a cell link (=Sheet1!A1) shows the cell's text. */
+export const resolveText = (store: GridStore, text: string | undefined, sheetIdx = store.sheetIndex): string | undefined => {
+  if (!text) return text;
+  if (!/^=/.test(text.trim())) return text;
+  const c = readFormula(store, text.trim(), sheetIdx);
+  return c.texts.filter(Boolean).join(' ');
+};
+
+/** Reads a range or list of numbers (custom error amounts, sparkline data). */
+export const readNumbers = (store: GridStore, formula: string, sheetIdx = store.sheetIndex): (number | null)[] => readFormula(store, formula, sheetIdx).values.map(num);
+export const readTexts = (store: GridStore, formula: string, sheetIdx = store.sheetIndex): string[] => readFormula(store, formula, sheetIdx).texts;
 
 const looksLikeRef = (s: string): boolean => /^=/.test(s) || parseRef(s) !== null;
 const num = (x: Scalar): number | null => (typeof x === 'number' && Number.isFinite(x) ? x : null);
 
 export const resolveChart = (store: GridStore, chart: Chart, sheetIdx = store.sheetIndex): ResolvedChart => {
-  let catTexts: string[] = [];
-  let catValues: Scalar[] = [];
+  let catCells: Cells | null = null;
   let fmt = 'General';
   const tr = traits(chart.type);
-  const style = chart.options?.style ?? 0;
+  const o = chart.options ?? {};
+  const style = o.style ?? 0;
   const second = secondaryOf(chart);
-  const series = chart.series.map((s, i): ResolvedSeries => {
+  const xy = tr.family === 'scatter' || tr.family === 'bubble';
+  const raw = chart.series.map((s, i) => {
     const v = readFormula(store, s.values, sheetIdx);
     if (i === 0) fmt = v.fmt;
-    if (s.categories && !catTexts.length) {
-      const c = readFormula(store, s.categories, sheetIdx);
-      catTexts = c.texts;
-      catValues = c.values;
-    }
-    const name = s.name ? (looksLikeRef(s.name) ? readFormula(store, s.name, sheetIdx).texts.join(' ') : s.name) : '';
-    return {
-      name: name || `Series ${i + 1}`,
-      values: v.values.map(num),
-      color: seriesColor(i, s.color, style),
-      type: tr.combo ? s.type ?? comboKind(chart.type, i, chart.series.length) : tr.base,
-      sizes: s.sizes ? readFormula(store, s.sizes, sheetIdx).values.map(num) : null,
-      secondary: second.has(i),
-    };
+    const cats = s.categories ? readFormula(store, s.categories, sheetIdx) : null;
+    if (cats && !catCells) catCells = cats;
+    return { s, i, v, cats };
   });
+  // Points in hidden rows or columns are left out unless the chart says to show them.
+  const hiddenMask = !o.showHidden && raw[0] ? raw[0].v.hidden : [];
+  const keep = (k: number) => !hiddenMask[k];
+  const filt = <T,>(a: T[]): T[] => (hiddenMask.some(Boolean) ? a.filter((_, k) => keep(k)) : a);
+  const blankZero = o.blanks === 'zero';
+  const series = raw.map(({ s, i, v, cats }): ResolvedSeries => {
+    const name = s.name ? (looksLikeRef(s.name) ? readFormula(store, s.name, sheetIdx).texts.join(' ') : s.name) : '';
+    const values = filt(v.values.map(num)).map((x) => (x === null && blankZero ? 0 : x));
+    const out: ResolvedSeries = {
+      name: name || `Series ${i + 1}`,
+      values,
+      // Stock volume defaults to a quiet colour so the price marks stand out.
+      color: tr.family === 'stock' && tr.volume && i === 0 && chart.series.length > 1 && !s.color && !s.fill?.color ? 'var(--chart-volume, var(--chart-9))' : seriesColor(i, s.color ?? s.fill?.color, style),
+      type: tr.combo ? s.type ?? comboKind(chart.type, i, chart.series.length) : tr.base,
+      sizes: s.sizes ? filt(readFormula(store, s.sizes, sheetIdx).values.map(num)) : null,
+      secondary: second.has(i),
+      index: i,
+      src: s,
+      xs: xy && cats ? filt(cats.values.map(num)) : null,
+    };
+    const lbl = s.labels?.fromCells ?? (s.labels ? undefined : o.labels?.fromCells);
+    if (lbl) out.cellLabels = filt(readFormula(store, lbl, sheetIdx).texts);
+    if (s.errorBars?.some((e) => e.kind === 'custom')) {
+      out.errors = s.errorBars.map((e) => (e.kind !== 'custom' ? {} : {
+        plus: e.plus ? filt(readFormula(store, e.plus, sheetIdx).values.map(num)) : undefined,
+        minus: e.minus ? filt(readFormula(store, e.minus, sheetIdx).values.map(num)) : undefined,
+      }));
+    }
+    return out;
+  });
+  const cc = catCells as Cells | null;
+  const catTexts = cc ? filt(cc.texts) : [];
+  const catValues = cc ? filt(cc.values) : [];
   const n = Math.max(0, ...series.map((s) => s.values.length));
   // A category range may span several columns (hierarchy levels); split it into one path per point.
   const k = n && catTexts.length > n ? Math.max(1, Math.round(catTexts.length / n)) : 1;
@@ -304,8 +372,14 @@ export const resolveChart = (store: GridStore, chart: Chart, sheetIdx = store.sh
   }
   let categories = k === 1 ? catTexts.slice(0, n) : paths.map((p) => p.filter(Boolean).join(' / '));
   if (categories.length < n) categories = [...categories, ...Array.from({ length: n - categories.length }, (_, i) => String(categories.length + i + 1))];
-  const xs = tr.family === 'scatter' || tr.family === 'bubble' ? (catValues.length ? catValues.slice(0, Math.max(n, 1)).map(num) : null) : null;
-  return { categories: categories.slice(0, Math.max(n, 1)), xs, paths, series, fmt: chart.options?.numFmt || fmt };
+  const xs = xy ? (catValues.length ? catValues.slice(0, Math.max(n, 1)).map(num) : null) : null;
+  const at = chart.axisTitles ?? {};
+  return {
+    categories: categories.slice(0, Math.max(n, 1)), xs, paths, series, fmt: o.numFmt || o.axes?.y?.numFmt || fmt,
+    catValues: k === 1 ? catValues.slice(0, n).map(num) : [], catFmt: cc?.fmt ?? 'General',
+    title: resolveText(store, chart.title, sheetIdx),
+    axisTitles: { x: resolveText(store, at.x, sheetIdx), y: resolveText(store, at.y, sheetIdx), y2: resolveText(store, at.y2, sheetIdx) },
+  };
 };
 
 /** Short text for a number on an axis or label, using the source cells' format. */

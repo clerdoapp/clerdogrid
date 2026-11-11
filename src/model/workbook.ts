@@ -1,5 +1,7 @@
 import type { Scalar } from '../engine/types';
 import { MAX_COLS } from '../engine/types';
+import type { ChartOptionsExtra, ChartSeriesExtra, ChartTypeExtra, SparklineGroup } from './chart';
+export type * from './chart';
 
 export const cellKey = (row: number, col: number): number => row * MAX_COLS + col;
 export const keyRow = (key: number): number => Math.floor(key / MAX_COLS);
@@ -43,8 +45,8 @@ export interface Cell {
   rich?: RichRun[];
 }
 
-export interface ColInfo { width?: number; hidden?: boolean; s?: number; outline?: number }
-export interface RowInfo { height?: number; hidden?: boolean; s?: number; outline?: number; /** Hidden by the sheet's filter rather than by hand. */ filtered?: boolean }
+export interface ColInfo { width?: number; hidden?: boolean; s?: number; outline?: number; /** The outline group ending next to this column is collapsed. */ collapsed?: boolean }
+export interface RowInfo { height?: number; hidden?: boolean; s?: number; outline?: number; /** Hidden by the sheet's filter rather than by hand. */ filtered?: boolean; /** The outline group ending next to this row is collapsed. */ collapsed?: boolean }
 
 export type CfOperator = 'between' | 'notBetween' | 'equal' | 'notEqual' | 'greaterThan' | 'lessThan' | 'greaterThanOrEqual' | 'lessThanOrEqual';
 export interface CfValue { type: 'min' | 'max' | 'num' | 'percent' | 'percentile' | 'formula' | 'autoMin' | 'autoMax'; value?: string }
@@ -107,16 +109,19 @@ export type ChartType =
   | 'histogram' | 'pareto' | 'boxWhisker'
   | 'combo' | 'comboSecondary' | 'comboAreaColumn'
   | 'treemap' | 'sunburst'
-  | 'waterfall' | 'radar' | 'radarMarkers' | 'radarFilled' | 'funnel';
-export interface ChartSeries {
+  | 'waterfall' | 'radar' | 'radarMarkers' | 'radarFilled' | 'funnel'
+  | ChartTypeExtra;
+export interface ChartSeries extends ChartSeriesExtra {
   name?: string; values: string; categories?: string; color?: string;
   /** How a series is drawn in a combo chart. */
   type?: 'column' | 'line' | 'area';
   /** Bubble sizes. */
   sizes?: string;
+  /** Category labels on several levels (PivotCharts): the label range, and per level (innermost first) one label per point, '' where a label spans. */
+  multiLevel?: { ref: string; levels: string[][] };
 }
 /** Per-chart settings. Every field is optional; a missing field means the automatic choice. */
-export interface ChartOptions {
+export interface ChartOptions extends ChartOptionsExtra {
   /** Series indexes measured on a second value axis at the right. */
   secondary?: number[];
   /** Histogram bins: a fixed number of bins, or a fixed bin width. */
@@ -150,6 +155,8 @@ export interface Chart {
   axisTitles?: { x?: string; y?: string; y2?: string };
   dataLabels?: boolean;
   options?: ChartOptions;
+  /** PivotChart: the PivotTable ("Sheet!Name") whose layout feeds the series. */
+  pivot?: string;
   /** Alternative text for screen readers. */
   alt?: string;
 }
@@ -179,7 +186,36 @@ export interface Shape {
 /** A pen, highlighter or marker stroke drawn over the sheet, in sheet pixels at 100% zoom. */
 export interface InkStroke { id: string; tool: 'pen' | 'highlighter' | 'marker'; color: string; width: number; points: [number, number][] }
 
-export interface NamedSheetView { name: string; filter?: AutoFilter; hiddenRows: number[]; hiddenCols: number[] }
+export interface NamedSheetView { name: string; filter?: AutoFilter; hiddenRows: number[]; hiddenCols: number[]; /** Stable id ({GUID}) used in the file. */ id?: string }
+
+/** Error-checking rules that can be ignored per range. */
+export type ErrorCheckType = 'numberStoredAsText' | 'formula' | 'formulaRange' | 'unlockedFormula' | 'twoDigitTextYear' | 'evalError' | 'emptyCellReference' | 'calculatedColumn' | 'listDataValidation';
+
+/** A modern password hash (ECMA-376 algorithmName / hashValue / saltValue / spinCount). */
+export interface PasswordHash { algorithmName: string; hashValue: string; saltValue: string; spinCount: number }
+
+/** A saved custom view of the workbook: per-sheet display, hidden rows and columns, filters and print settings. */
+export interface CustomView {
+  name: string;
+  guid: string;
+  includePrint: boolean;
+  includeHidden: boolean;
+  activeSheet: number;
+  sheets: {
+    sheet: number;
+    state?: Sheet['state'];
+    zoom?: number;
+    frozenRows?: number;
+    frozenCols?: number;
+    showGrid?: boolean;
+    showHeaders?: boolean;
+    selection?: CellRange;
+    hiddenRows?: number[];
+    hiddenCols?: number[];
+    filter?: AutoFilter;
+    pageSetup?: Sheet['pageSetup'];
+  }[];
+}
 
 export interface SheetView {
   frozenRows: number;
@@ -189,10 +225,17 @@ export interface SheetView {
   zoom: number;
   rtl: boolean;
   selection?: CellRange;
+  /** Page break preview or page layout view instead of the normal grid. */
+  pageView?: 'pageBreakPreview' | 'pageLayout';
+  /** Split window (not frozen): sizes of the top and left panes and their own scroll offsets, in sheet pixels at 100%. */
+  split?: { x: number; y: number; scrollX: number; scrollY: number };
 }
 
 export interface Sheet {
   name: string;
+  /** Live collaboration: a stable id and a sort key for the sheet's place in the list (not saved to files). */
+  cid?: string;
+  cpos?: string;
   cells: Map<number, Cell>;
   cols: Map<number, ColInfo>;
   rows: Map<number, RowInfo>;
@@ -208,22 +251,84 @@ export interface Sheet {
   pictures: Picture[];
   shapes?: Shape[];
   ink?: InkStroke[];
+  /** PivotTables placed on this sheet. */
+  pivots?: import('./pivot').PivotTable[];
+  /** Slicers and timelines floating over this sheet. */
+  slicers?: import('./pivot').Slicer[];
+  /** Outline settings: summary rows below detail and summary columns right of detail (both default true). */
+  outlinePr?: { summaryBelow?: boolean; summaryRight?: boolean };
   comments?: Map<number, CommentThread>;
   sheetViews?: NamedSheetView[];
+  /** Error-check indicators turned off for these ranges (worksheet ignoredErrors). */
+  ignoredErrors?: { range: CellRange; types: ErrorCheckType[] }[];
   /** Ranges people can edit while the sheet is protected. */
   editRanges?: { title: string; range: CellRange; password?: string }[];
+  /** 'chart' is a chart sheet: no cells, one chart filling the view (charts[0]). */
+  kind?: 'chart';
+  sparklines?: SparklineGroup[];
   hyperlinks: Map<number, string>;
   notes: Map<number, Note>;
   tabColor?: string;
   state: 'visible' | 'hidden' | 'veryHidden';
-  protection?: { password?: string; sheet: boolean; options?: Record<string, boolean> };
-  pageSetup?: {
-    orientation?: 'portrait' | 'landscape'; paper?: number; scale?: number; fitWidth?: number; fitHeight?: number; printArea?: string;
-    margins?: { left: number; right: number; top: number; bottom: number; header: number; footer: number };
-    header?: string; footer?: string; printTitleRows?: string; printTitleCols?: string; gridlines?: boolean; headings?: boolean;
-    centerH?: boolean; centerV?: boolean; firstPageNumber?: number; order?: 'downThenOver' | 'overThenDown';
-    rowBreaks?: number[]; colBreaks?: number[];
-  };
+  protection?: { password?: string; hash?: PasswordHash; sheet: boolean; options?: Record<string, boolean> };
+  pageSetup?: PageSetup;
+}
+
+/** A picture in a header or footer (the &G code). Slot names: L/C/R + H/F, plus FIRST or EVEN for those variants, e.g. "CH", "LFFIRST". */
+export interface HeaderPicture { data: Uint8Array; mime: string; /** Size in points. */ width: number; height: number }
+
+/** Print settings of a sheet. Margins are in inches. A missing field means the default. */
+export interface PageSetup {
+  orientation?: 'portrait' | 'landscape';
+  /** Paper size code from the file format (1 Letter, 9 A4, ...). */
+  paper?: number;
+  /** Custom paper size, e.g. "210mm" or "8.5in". */
+  paperWidth?: string; paperHeight?: string;
+  /** Percent, 10-400. */
+  scale?: number;
+  /** Fit to pages wide / tall; set either to switch to fit mode. 0 means no limit in that direction. */
+  fitWidth?: number; fitHeight?: number;
+  /** Ranges like "A1:D20" or "A1:D20,F1:H9" (no sheet name). Stored in the file as the Print_Area defined name. */
+  printArea?: string;
+  margins?: { left: number; right: number; top: number; bottom: number; header: number; footer: number };
+  /** Odd-page (or every page) header and footer, with &-codes. */
+  header?: string; footer?: string;
+  evenHeader?: string; evenFooter?: string; firstHeader?: string; firstFooter?: string;
+  differentOddEven?: boolean; differentFirst?: boolean;
+  /** Both default to true. */
+  scaleWithDoc?: boolean; alignWithMargins?: boolean;
+  headerPictures?: Record<string, HeaderPicture>;
+  /** Rows to repeat at the top, "1:2"; columns to repeat at the left, "A:B". */
+  printTitleRows?: string; printTitleCols?: string;
+  gridlines?: boolean; headings?: boolean;
+  centerH?: boolean; centerV?: boolean;
+  firstPageNumber?: number;
+  order?: 'downThenOver' | 'overThenDown';
+  /** Manual page breaks: the index (0-based) of the first row or column of the new page. */
+  rowBreaks?: number[]; colBreaks?: number[];
+  blackAndWhite?: boolean; draft?: boolean;
+  cellComments?: 'none' | 'atEnd' | 'asDisplayed';
+  errors?: 'displayed' | 'blank' | 'dash' | 'NA';
+  horizontalDpi?: number; verticalDpi?: number; copies?: number;
+}
+
+/** A refreshable import from a text file or another workbook. */
+export interface DataQuery {
+  id: string;
+  name: string;
+  kind: 'text' | 'workbook';
+  /** Name of the source file. */
+  file: string;
+  /** Full path of the source file on the desktop app, so Refresh can read it again. */
+  path?: string;
+  /** Text import settings as JSON (text sources). */
+  options?: string;
+  /** Sheet and range or table in the source workbook. */
+  source?: { sheet: string; range?: string };
+  /** Where the data goes: top-left cell and the size last written. */
+  target: { sheet: string; row: number; col: number; rows: number; cols: number };
+  /** ISO time of the last refresh. */
+  refreshed?: string;
 }
 
 export interface DefinedName { name: string; formula: string; sheet?: number; hidden?: boolean; comment?: string }
@@ -236,13 +341,21 @@ export interface Workbook {
   date1904: boolean;
   activeSheet: number;
   props?: { title?: string; creator?: string; created?: string; modified?: string };
-  calc?: { iterate?: boolean; maxIterations?: number; maxChange?: number; manual?: boolean };
+  calc?: { iterate?: boolean; maxIterations?: number; maxChange?: number; manual?: boolean; /** Automatic except data tables. */ autoNoTable?: boolean; /** Round stored values to their displayed precision. */ precisionAsDisplayed?: boolean; /** Show references in R1C1 style. */ r1c1?: boolean };
   /** Workbook structure protection: sheets can't be added, removed, renamed, moved or unhidden. */
-  protection?: { structure: boolean; password?: string };
+  protection?: { structure: boolean; windows?: boolean; password?: string; hash?: PasswordHash };
+  /** Saved custom views (workbook customWorkbookViews). */
+  customViews?: CustomView[];
   /** Saved automation scripts (Automate). */
   scripts?: { id: string; name: string; code: string }[];
   /** Package parts the reader didn't understand, written back untouched where possible. */
   extraParts?: Map<string, Uint8Array>;
+  /** Data imported from other files (Get Data), kept so it can be refreshed. */
+  queries?: DataQuery[];
+  /** Pivot caches shared by PivotTables. Treated as immutable: replace a cache instead of changing it. */
+  pivotCaches?: import('./pivot').PivotCache[];
+  /** Slicer and timeline caches (their filter state). */
+  slicerCaches?: import('./pivot').SlicerCache[];
 }
 
 export const DEFAULT_COL_WIDTH = 8.43;
@@ -267,6 +380,10 @@ export const newSheet = (name: string): Sheet => ({
   notes: new Map(),
   state: 'visible',
 });
+
+/** Defaults for sheets people add (not sheets read from files): right to left follows the interface language. */
+export const userSheetDefaults = { rtl: false };
+export const newUserSheet = (name: string): Sheet => { const s = newSheet(name); s.view.rtl = userSheetDefaults.rtl; return s; };
 
 export const newWorkbook = (): Workbook => ({ sheets: [newSheet('Sheet1')], names: [], styles: [{}], date1904: false, activeSheet: 0 });
 

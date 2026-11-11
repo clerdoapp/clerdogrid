@@ -5,6 +5,7 @@ import { cellKey, type Cell, type CellRange, type FilterColumn } from '../../mod
 import { displayText } from './clipboard';
 import { compareOp } from '../validation';
 import type { GridStore } from '../store';
+import { N, T } from '../../ui/i18n';
 
 /** The block of data around the active cell, like other spreadsheets's Ctrl+A / current region. */
 export const currentRegion = (store: GridStore, row = store.sel.active.row, col = store.sel.active.col): CellRange => {
@@ -46,12 +47,16 @@ export const dataRange = (store: GridStore): CellRange => {
 export interface SortKey { col: number; descending?: boolean; by?: 'value' | 'cellColor' | 'fontColor'; color?: string; customList?: string[] }
 
 /** Sorts the rows (or columns with byCols) of a range, moving formats with values and keeping formulas pointing at the same relative rows. */
+/** A sheet view can take a row sort over, so rows are reordered only on screen. Returns true when it did. */
+export const sortInterceptor: { current: ((store: GridStore, r: CellRange, keys: SortKey[], header: boolean) => boolean) | null } = { current: null };
+
 export const sortRange = (store: GridStore, r: CellRange, keys: SortKey[], header: boolean, byCols = false, caseSensitive = false): void => {
+  if (!byCols && sortInterceptor.current?.(store, r, keys, header)) return;
   const sheet = store.sheetIndex;
   const start = byCols ? r.c1 + (header ? 1 : 0) : r.r1 + (header ? 1 : 0);
   const end = byCols ? r.c2 : r.r2;
   if (end <= start - 1) return;
-  if (store.sheet.merges.some((m) => m.r1 <= r.r2 && m.r2 >= r.r1 && m.c1 <= r.c2 && m.c2 >= r.c1)) { store.notify('To sort, all merged cells in the range need to be the same size. Unmerge them first.'); return; }
+  if (store.sheet.merges.some((m) => m.r1 <= r.r2 && m.r2 >= r.r1 && m.c1 <= r.c2 && m.c2 >= r.c1)) { store.notify(T('To sort, all merged cells in the range need to be the same size. Unmerge them first.')); return; }
   const lines: { idx: number; cells: (Cell | undefined)[]; hidden?: boolean }[] = [];
   const span = byCols ? [r.r1, r.r2] : [r.c1, r.c2];
   for (let i = start; i <= end; i++) {
@@ -83,7 +88,7 @@ export const sortRange = (store: GridStore, r: CellRange, keys: SortKey[], heade
     return a.idx - b.idx;
   });
   const area: CellRange = byCols ? { ...r, c1: start } : { ...r, r1: start };
-  store.change('Sort', [{ area }], () => {
+  store.change(N('Sort'), [{ area }], () => {
     sorted.forEach((ln, k) => {
       const dest = start + k;
       ln.cells.forEach((c, pos) => {
@@ -111,14 +116,14 @@ export const sortRange = (store: GridStore, r: CellRange, keys: SortKey[], heade
 export const toggleFilter = (store: GridStore): void => {
   const s = store.sheet;
   if (s.autoFilter) {
-    store.change('Remove filter', 'sheet', () => {
+    store.change(N('Remove filter'), 'sheet', () => {
       for (const row of s.rows.values()) if (row.filtered) { row.hidden = false; delete row.filtered; }
       delete s.autoFilter;
     });
     return;
   }
   const r = dataRange(store);
-  store.change('Filter', 'sheet', () => { s.autoFilter = { range: r, columns: [] }; });
+  store.change(N('Filter'), 'sheet', () => { s.autoFilter = { range: r, columns: [] }; });
 };
 
 export const filterValues = (store: GridStore, col: number): { text: string; count: number }[] => {
@@ -187,7 +192,7 @@ export const applyFilter = (store: GridStore): void => {
 export const setFilterColumn = (store: GridStore, f: FilterColumn | null, col: number): void => {
   const af = store.sheet.autoFilter;
   if (!af) return;
-  store.change('Filter', 'sheet', () => {
+  store.change(N('Filter'), 'sheet', () => {
     af.columns = af.columns.filter((c) => c.col !== col);
     if (f) af.columns.push(f);
     applyFilter(store);
@@ -197,7 +202,7 @@ export const setFilterColumn = (store: GridStore, f: FilterColumn | null, col: n
 export const clearFilters = (store: GridStore): void => {
   const af = store.sheet.autoFilter;
   if (!af) return;
-  store.change('Clear filter', 'sheet', () => { af.columns = []; applyFilter(store); });
+  store.change(N('Clear filter'), 'sheet', () => { af.columns = []; applyFilter(store); });
 };
 
 // ---------- Other data tools ----------
@@ -213,7 +218,7 @@ export const removeDuplicates = (store: GridStore, r: CellRange, cols: number[],
   }
   const removed = r.r2 - first + 1 - keep.length;
   if (!removed) return 0;
-  store.change('Remove duplicates', [{ area: r }], () => {
+  store.change(N('Remove duplicates'), [{ area: r }], () => {
     const rows = keep.map((row) => { const out: (Cell | undefined)[] = []; for (let c = r.c1; c <= r.c2; c++) out.push(structuredClone(store.cell(row, c))); return out; });
     for (let row = first; row <= r.r2; row++) for (let c = r.c1; c <= r.c2; c++) store.engine.clearCell(sheet, row, c);
     rows.forEach((cells, i) => cells.forEach((cell, j) => {
@@ -261,7 +266,7 @@ export const textToColumns = (store: GridStore, opts: { delimiters: string[]; ot
     lines.push(parts);
   }
   const width = Math.max(...lines.map((l) => l.length));
-  store.change('Text to columns', [{ area: { r1: r.r1, c1: col, r2: r.r2, c2: col + width - 1 } }], () => {
+  store.change(N('Text to columns'), [{ area: { r1: r.r1, c1: col, r2: r.r2, c2: col + width - 1 } }], () => {
     lines.forEach((parts, i) => parts.forEach((p, j) => store.enter(r.r1 + i, col + j, p)));
   });
 };
@@ -295,7 +300,7 @@ export const replaceAll = (store: GridStore, o: FindOptions, replacement: string
   const re = new RegExp(o.wholeCell ? `^${pat}$` : pat, o.matchCase ? 'g' : 'gi');
   const bySheet = new Map<number, Found[]>();
   for (const h of hits) bySheet.set(h.sheet, [...(bySheet.get(h.sheet) ?? []), h]);
-  store.change('Replace', 'book', () => {
+  store.change(N('Replace'), 'book', () => {
     for (const h of hits) {
       const c = store.wb.sheets[h.sheet]!.cells.get(cellKey(h.row, h.col));
       if (!c) continue;
@@ -332,13 +337,13 @@ export const goalSeek = (store: GridStore, setCell: { row: number; col: number }
   // Undoable: put the original back, then apply the answer as one step.
   store.engine.setValue(sheet, byCell.row, byCell.col, orig);
   store.engine.recalc();
-  if (ok) store.change('Goal Seek', [{ area: { r1: byCell.row, c1: byCell.col, r2: byCell.row, c2: byCell.col } }], () => store.engine.setValue(sheet, byCell.row, byCell.col, +x1.toPrecision(15)));
+  if (ok) store.change(N('Goal Seek'), [{ area: { r1: byCell.row, c1: byCell.col, r2: byCell.row, c2: byCell.col } }], () => store.engine.setValue(sheet, byCell.row, byCell.col, +x1.toPrecision(15)));
   return { ok, value: x1, result };
 };
 
 /** Data > Group / Ungroup: outline levels on rows or columns, with collapse by hiding. */
 export const groupLines = (store: GridStore, axis: 'row' | 'col', from: number, to: number, delta: 1 | -1): void => {
-  store.change(delta > 0 ? 'Group' : 'Ungroup', 'sheet', () => {
+  store.change(delta > 0 ? N('Group') : N('Ungroup'), 'sheet', () => {
     const map = axis === 'row' ? store.sheet.rows : store.sheet.cols;
     for (let i = from; i <= to; i++) {
       const info = map.get(i) ?? {};
@@ -350,7 +355,7 @@ export const groupLines = (store: GridStore, axis: 'row' | 'col', from: number, 
 };
 
 export const setLinesHidden = (store: GridStore, axis: 'row' | 'col', from: number, to: number, hidden: boolean): void => {
-  store.change(hidden ? 'Hide' : 'Unhide', 'sheet', () => {
+  store.change(hidden ? N('Hide') : N('Unhide'), 'sheet', () => {
     const map = axis === 'row' ? store.sheet.rows : store.sheet.cols;
     for (let i = from; i <= to; i++) { const info = map.get(i) ?? {}; info.hidden = hidden; map.set(i, info); }
   });

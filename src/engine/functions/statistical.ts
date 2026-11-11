@@ -4,6 +4,7 @@ import {
   betaIncInv, betaIncPair, betaPdf, chisqSf, fCdfPair, fPdf, gamma, gammaInv, gammaInvUpper, gammaln, gammaP, gammaPdf, gammaQ,
   lnChoose, normCdf, normHalf, normInv, normPdf, solvePositive, tCdf, tInv, tPdf, xlogy,
 } from './special';
+import { confidenceHalfWidth, detectSeason, etsStatistic, fitEts, forecastSteps, MAX_SEASON, prepareSeries, stepsAhead, type EtsModel, type EtsSeries } from '../ets';
 
 type Num = number | CellError;
 type Fn = FunctionDef['fn'];
@@ -747,174 +748,27 @@ const confT = (a: number, s: number, nn: number): Num => {
   return (-tInv(a / 2, n - 1) * s) / Math.sqrt(n);
 };
 
-// ---------- FORECAST.ETS (additive Holt-Winters, AAA) ----------
+// ---------- FORECAST.ETS family (AAA exponential smoothing, see ../ets.ts) ----------
 
-interface Series { y: number[]; tEnd: number; step: number }
-
-const etsSeries = (vArg: Value, tArg: Value, completion: number, aggregation: number, ctx: FnContext): Series | CellError => {
-  const vs = [...cellsOf(vArg, ctx)], ts = [...cellsOf(tArg, ctx)];
-  if (vs.length !== ts.length) return Err.na;
-  const comp = Math.trunc(completion), agg = Math.trunc(aggregation);
-  if ((comp !== 0 && comp !== 1) || agg < 0 || agg > 6) return Err.num;
-  const groups = new Map<number, Scalar[]>();
-  for (let i = 0; i < vs.length; i++) {
-    const t = ts[i]!, v = vs[i]!;
-    if (isError(t)) return t;
-    if (isError(v)) return v;
-    if (typeof t !== 'number') return Err.value;
-    const g = groups.get(t) ?? [];
-    g.push(v);
-    groups.set(t, g);
-  }
-  const keys = [...groups.keys()].sort((a, b) => a - b);
-  if (keys.length < 3) return Err.num;
-  const aggregate = (g: Scalar[]): number | null => {
-    const n = g.filter((x): x is number => typeof x === 'number');
-    if (agg === 2) return n.length;
-    if (agg === 3) return g.filter((x) => x !== null).length;
-    if (!n.length) return null;
-    switch (agg) {
-      case 1: return sum(n);
-      case 4: return Math.min(...n);
-      case 5: return Math.max(...n);
-      case 6: return median(n) as number;
-      default: return mean(n);
-    }
-  };
-  let step = Infinity;
-  for (let i = 1; i < keys.length; i++) step = Math.min(step, keys[i]! - keys[i - 1]!);
-  const slots = Math.round((keys[keys.length - 1]! - keys[0]!) / step) + 1;
-  const y: (number | null)[] = new Array<number | null>(slots).fill(null);
-  for (const k of keys) {
-    const pos = (k - keys[0]!) / step;
-    if (Math.abs(pos - Math.round(pos)) > 1e-6) return Err.num;
-    y[Math.round(pos)] = aggregate(groups.get(k)!);
-  }
-  const missing = y.filter((v) => v === null).length;
-  if (missing > 0.3 * slots) return Err.num;
-  for (let i = 0; i < slots; i++) {
-    if (y[i] !== null) continue;
-    if (comp === 0) { y[i] = 0; continue; }
-    const a = i - 1;
-    let b = i + 1;
-    while (b < slots && y[b] === null) b++;
-    const ya = a >= 0 ? y[a]! : null, yb = b < slots ? y[b]! : null;
-    y[i] = ya === null ? yb : yb === null ? ya : ya + ((yb - ya) * (i - a)) / (b - a);
-  }
-  return { y: y as number[], tEnd: keys[keys.length - 1]!, step };
-};
-
-/** Seasonality detection: the strongest autocorrelation peak of the linearly detrended series. */
-const detectSeason = (y: number[]): number => {
-  const n = y.length;
-  const xs = y.map((_, i) => i);
-  const r = simpleReg(xs, y);
-  if (fail(r)) return 1;
-  const e = y.map((v, i) => v - r.icpt - r.slope * i);
-  const denom = sum(e.map((v) => v * v));
-  if (denom === 0) return 1;
-  const acf = (lag: number): number => {
-    let s = 0;
-    for (let i = lag; i < n; i++) s += e[i]! * e[i - lag]!;
-    return s / denom;
-  };
-  const maxLag = Math.min(Math.floor(n / 2), 8760);
-  const ac = [1, 0];
-  for (let l = 2; l <= maxLag + 1; l++) ac.push(l <= n - 1 ? acf(l) : 0);
-  let best = 1, bestV = 2 / Math.sqrt(n);
-  for (let l = 2; l <= maxLag; l++) {
-    if (ac[l]! > bestV && ac[l]! >= ac[l - 1]! && ac[l]! >= ac[l + 1]!) { best = l; bestV = ac[l]!; }
-  }
-  return best;
-};
-
-interface EtsModel { alpha: number; beta: number; gamma: number; m: number; l: number; b: number; s: number[]; sse: number; fitted: number[] }
-
-const etsRun = (y: number[], m: number, alpha: number, beta: number, gm: number): EtsModel => {
-  const n = y.length, seasonal = m > 1;
-  let l: number, b: number;
-  const s = new Array<number>(Math.max(m, 1)).fill(0);
-  if (seasonal) {
-    const m1 = mean(y.slice(0, m)), m2 = n >= 2 * m ? mean(y.slice(m, 2 * m)) : m1;
-    b = (m2 - m1) / m;
-    l = m1 - b * (m - 1) / 2;
-    for (let i = 0; i < m; i++) s[i] = y[i]! - (l + b * i);
-    l -= b; // so the first update starts one step before y[0]
-  } else { l = y[0]!; b = y[1]! - y[0]!; l -= b; }
-  let sse = 0;
-  const fitted: number[] = [];
-  for (let t = 0; t < n; t++) {
-    const si = seasonal ? s[t % m]! : 0;
-    const f = l + b + si;
-    fitted.push(f);
-    const e = y[t]! - f;
-    sse += e * e;
-    const ln = alpha * (y[t]! - si) + (1 - alpha) * (l + b);
-    b = beta * (ln - l) + (1 - beta) * b;
-    if (seasonal) s[t % m] = gm * (y[t]! - ln) + (1 - gm) * si;
-    l = ln;
-  }
-  return { alpha, beta, gamma: gm, m, l, b, s, sse, fitted };
-};
-
-const etsFit = (y: number[], m: number): EtsModel => {
-  const clamp = (v: number): number => Math.min(1, Math.max(0, v));
-  const cost = (p: number[]): number => etsRun(y, m, clamp(p[0]!), clamp(p[1]!), m > 1 ? clamp(p[2]!) : 0).sse;
-  // Nelder-Mead on the smoothing parameters, clamped to [0, 1].
-  const dim = m > 1 ? 3 : 2;
-  let simplex = [[0.3, 0.1, 0.1].slice(0, dim)];
-  for (let i = 0; i < dim; i++) { const p = [...simplex[0]!]; p[i]! += 0.25; simplex.push(p); }
-  let vals = simplex.map(cost);
-  for (let it = 0; it < 400 * dim; it++) {
-    const idx = vals.map((_, i) => i).sort((a, b) => vals[a]! - vals[b]!);
-    simplex = idx.map((i) => simplex[i]!);
-    vals = idx.map((i) => vals[i]!);
-    if (Math.abs(vals[dim]! - vals[0]!) <= 1e-12 * (Math.abs(vals[0]!) + 1e-12)) break;
-    const c = simplex[0]!.map((_, j) => mean(simplex.slice(0, dim).map((p) => p[j]!)));
-    const at = (t: number): number[] => c.map((v, j) => v + t * (simplex[dim]![j]! - v));
-    const xr = at(-1), fr = cost(xr);
-    if (fr < vals[0]!) {
-      const xe = at(-2), fe = cost(xe);
-      [simplex[dim], vals[dim]] = fe < fr ? [xe, fe] : [xr, fr];
-    } else if (fr < vals[dim - 1]!) { simplex[dim] = xr; vals[dim] = fr; }
-    else {
-      const xc = at(0.5), fc = cost(xc);
-      if (fc < vals[dim]!) { simplex[dim] = xc; vals[dim] = fc; }
-      else {
-        for (let i = 1; i <= dim; i++) { simplex[i] = simplex[i]!.map((v, j) => simplex[0]![j]! + 0.5 * (v - simplex[0]![j]!)); vals[i] = cost(simplex[i]!); }
-      }
-    }
-  }
-  const p = simplex[0]!;
-  return etsRun(y, m, clamp(p[0]!), clamp(p[1]!), m > 1 ? clamp(p[2]!) : 0);
-};
-
-const etsPoint = (md: EtsModel, n: number, h: number): number => md.l + h * md.b + (md.m > 1 ? md.s[(n + h - 1) % md.m]! : 0);
-
-const etsPrepare = (vArg: Value, tArg: Value, seasonArg: Value | undefined, compArg: Value | undefined, aggArg: Value | undefined, ctx: FnContext):
-  { series: Series; model: EtsModel } | CellError => {
+const etsSeries = (vArg: Value, tArg: Value, compArg: Value | undefined, aggArg: Value | undefined, ctx: FnContext): EtsSeries | CellError => {
   const comp = optNum(compArg, ctx, 1);
   if (fail(comp)) return comp;
   const agg = optNum(aggArg, ctx, 0);
   if (fail(agg)) return agg;
-  const season = optNum(seasonArg, ctx, 1);
-  if (fail(season)) return season;
-  const series = etsSeries(vArg, tArg, comp, agg, ctx);
-  if (fail(series)) return series;
-  const sn = Math.round(season);
-  if (sn < 0 || sn > 8760) return Err.num;
-  const m = sn === 1 ? detectSeason(series.y) : sn;
-  if (m > 1 && series.y.length < 2 * m) return Err.num;
-  return { series, model: etsFit(series.y, m) };
+  return prepareSeries([...cellsOf(vArg, ctx)], [...cellsOf(tArg, ctx)], comp, agg, ctx.date1904);
 };
 
-const etsForecast = (md: EtsModel, series: Series, target: number): Num => {
-  const h = (target - series.tEnd) / series.step;
-  if (h < 0) return Err.num;
-  const n = series.y.length;
-  const lo = Math.floor(h), frac = h - lo;
-  const at = (k: number): number => (k === 0 ? series.y[n - 1]! : etsPoint(md, n, k));
-  return frac === 0 ? at(lo) : at(lo) + frac * (at(lo + 1) - at(lo));
+const etsPrepare = (vArg: Value, tArg: Value, seasonArg: Value | undefined, compArg: Value | undefined, aggArg: Value | undefined, ctx: FnContext):
+  { series: EtsSeries; model: EtsModel } | CellError => {
+  const season = optNum(seasonArg, ctx, 1);
+  if (fail(season)) return season;
+  const series = etsSeries(vArg, tArg, compArg, aggArg, ctx);
+  if (fail(series)) return series;
+  const sn = Math.round(season);
+  if (sn < 0 || sn > MAX_SEASON) return Err.num;
+  const m = sn === 1 ? detectSeason(series.y) : sn;
+  if (m > 1 && series.y.length < 2 * m) return Err.num;
+  return { series, model: fitEts(series.y, m) };
 };
 
 const etsFn: Fn = (args, ctx) => {
@@ -922,8 +776,9 @@ const etsFn: Fn = (args, ctx) => {
   if (fail(target)) return target;
   const p = etsPrepare(args[1]!, args[2]!, args[3], args[4], args[5], ctx);
   if (fail(p)) return p;
-  const r = etsForecast(p.model, p.series, target);
-  return fail(r) ? r : ok(r);
+  const h = stepsAhead(p.series, target);
+  if (h < -1e-9) return Err.num;
+  return ok(forecastSteps(p.model, p.series.y, Math.max(0, h)));
 };
 
 const etsConfFn: Fn = (args, ctx) => {
@@ -934,21 +789,13 @@ const etsConfFn: Fn = (args, ctx) => {
   if (conf <= 0 || conf >= 1) return Err.num;
   const p = etsPrepare(args[1]!, args[2]!, args[4], args[5], args[6], ctx);
   if (fail(p)) return p;
-  const { model: md, series } = p;
-  const h = Math.max(1, Math.ceil((target - series.tEnd) / series.step));
-  if (target < series.tEnd) return Err.num;
-  const s2 = md.sse / series.y.length;
-  let v = 1;
-  for (let j = 1; j < h; j++) v += (md.alpha * (1 + j * md.beta) + (md.m > 1 && j % md.m === 0 ? md.gamma : 0)) ** 2;
-  return ok(normInv(0.5 + conf / 2) * Math.sqrt(s2 * v));
+  const h = stepsAhead(p.series, target);
+  if (h < -1e-9) return Err.num;
+  return ok(confidenceHalfWidth(p.model, p.series.y.length, h, normInv(0.5 + conf / 2)));
 };
 
 const etsSeasonFn: Fn = (args, ctx) => {
-  const comp = optNum(args[2], ctx, 1);
-  if (fail(comp)) return comp;
-  const agg = optNum(args[3], ctx, 0);
-  if (fail(agg)) return agg;
-  const s = etsSeries(args[0]!, args[1]!, comp, agg, ctx);
+  const s = etsSeries(args[0]!, args[1]!, args[2], args[3], ctx);
   return fail(s) ? s : detectSeason(s.y);
 };
 
@@ -959,23 +806,7 @@ const etsStatFn: Fn = (args, ctx) => {
   if (ty < 1 || ty > 8) return Err.num;
   const p = etsPrepare(args[0]!, args[1]!, args[3], args[4], args[5], ctx);
   if (fail(p)) return p;
-  const { model: md, series } = p;
-  const y = series.y, f = md.fitted, n = y.length;
-  const err = y.map((v, i) => v - f[i]!);
-  const mae = mean(err.map(Math.abs));
-  switch (ty) {
-    case 1: return md.alpha;
-    case 2: return md.beta;
-    case 3: return md.gamma;
-    case 4: {
-      const naive = mean(y.slice(1).map((v, i) => Math.abs(v - y[i]!)));
-      return ok(mae / naive);
-    }
-    case 5: return ok(mean(y.map((v, i) => (Math.abs(v) + Math.abs(f[i]!) === 0 ? 0 : (2 * Math.abs(err[i]!)) / (Math.abs(v) + Math.abs(f[i]!))))));
-    case 6: return mae;
-    case 7: return Math.sqrt(md.sse / n);
-    default: return series.step;
-  }
+  return ok(etsStatistic(p.model, p.series, ty));
 };
 
 // ---------- definitions ----------

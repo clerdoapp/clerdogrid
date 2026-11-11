@@ -4,7 +4,11 @@ import { formatValue } from '../formats/numfmt';
 import { cellKey, colName, DEFAULT_FONT, type CellRange, type CellStyle, type BorderSide } from '../model/workbook';
 import { CfEvaluator, type CfResult } from '../app/cf';
 import type { SheetLayout } from '../app/layout';
+import type { RowOrder } from '../app/rowOrder';
 import { inRange, type GridStore } from '../app/store';
+import { drawOutline } from './outlineGutter';
+import { displayFormat, localizeNumberText } from '../app/locale';
+import { drawCellImage } from './cellImages';
 
 export interface Theme {
   bg: string; grid: string; header: string; headerInk: string; headerSel: string; headerSelInk: string; headerLine: string;
@@ -21,8 +25,14 @@ export const readTheme = (el: Element): Theme => {
   };
 };
 
-/** Where a pane of cells is drawn on screen. */
-export interface Pane { r1: number; r2: number; c1: number; c2: number; x: number; y: number; w: number; h: number; scrollX: number; scrollY: number }
+/**
+ * Where a pane of cells is drawn. Panes from panesOf() are in screen pixels; on a right-to-left sheet they are
+ * mirrored (`m`). The renderer works in logical (left-to-right) pixels with panesL() and a mirrored canvas.
+ */
+export interface Pane { r1: number; r2: number; c1: number; c2: number; x: number; y: number; w: number; h: number; scrollX: number; scrollY: number; m?: boolean }
+
+/** Screen x of a logical x (and back): the same formula both ways. */
+export const mirrorX = (vp: Viewport, x: number, w = 0): number => (vp.rtl ? vp.width - x - w : x);
 
 export interface Viewport {
   layout: SheetLayout;
@@ -36,7 +46,25 @@ export interface Viewport {
   scrollY: number;
   frozenRows: number;
   frozenCols: number;
+  /** Outline gutter width left of the row headers and height above the column headers (part of headerW/headerH). */
+  outlineW?: number;
+  outlineH?: number;
+  /** Split window: screen sizes of the top and left panes (bars excluded) and their own scroll offsets in sheet pixels. */
+  split?: { w: number; h: number; sx: number; sy: number };
+  /** A sheet view's own row order: the layout's rows are display rows, cells are fetched by data row. */
+  rowOrder?: RowOrder | null;
+  /** Right-to-left sheet: column A at the right edge, row headers on the right. */
+  rtl?: boolean;
 }
+
+/** Extra drawing in each pane after the cell content (sparklines). `rowY` takes display rows. */
+export interface PanePaint { pane: Pane; vp: Viewport; colX: (c: number) => number; rowY: (r: number) => number; dark: boolean; merges: CellRange[] }
+export type PanePainter = (ctx: CanvasRenderingContext2D, store: GridStore, a: PanePaint) => void;
+const panePainters: PanePainter[] = [];
+export const registerPanePainter = (p: PanePainter): void => { if (!panePainters.includes(p)) panePainters.push(p); };
+
+/** Width of the bar between split panes, in screen pixels. */
+export const SPLIT_BAR = 5;
 
 export interface Overlay {
   refs: { range: CellRange; color: string }[];
@@ -66,7 +94,38 @@ export const cssFont = (s: CellStyle, zoom: number): string => {
 const BORDER_W: Record<string, number> = { thin: 1, hair: 1, dotted: 1, dashed: 1, dashDot: 1, dashDotDot: 1, medium: 2, mediumDashed: 2, mediumDashDot: 2, mediumDashDotDot: 2, slantDashDot: 2, thick: 3, double: 3 };
 const BORDER_DASH: Record<string, number[]> = { dotted: [1, 1], hair: [1, 1], dashed: [3, 1], mediumDashed: [6, 2], dashDot: [5, 2, 1, 2], mediumDashDot: [6, 2, 2, 2], dashDotDot: [5, 1, 1, 1, 1, 1], mediumDashDotDot: [6, 2, 2, 2, 2, 2], slantDashDot: [6, 2, 2, 2] };
 
-export const panesOf = (vp: Viewport): Pane[] => {
+const splitPanes = (vp: Viewport, sp: NonNullable<Viewport['split']>): Pane[] => {
+  const { layout, zoom, headerW, headerH, width, height } = vp;
+  const rowsIn = (start: number, px: number) => [layout.rows.at(start), Math.min(MAX_ROWS - 1, layout.rows.at(start + px / zoom))] as const;
+  const colsIn = (start: number, px: number) => [layout.cols.at(start), Math.min(MAX_COLS - 1, layout.cols.at(start + px / zoom))] as const;
+  const lw = sp.w > 0 ? sp.w : 0, th = sp.h > 0 ? sp.h : 0;
+  const mx = headerW + (lw ? lw + SPLIT_BAR : 0), my = headerH + (th ? th + SPLIT_BAR : 0);
+  const mw = Math.max(0, width - mx), mh = Math.max(0, height - my);
+  const [mr1, mr2] = rowsIn(vp.scrollY, mh), [mc1, mc2] = colsIn(vp.scrollX, mw);
+  const panes: Pane[] = [{ r1: mr1, r2: mr2, c1: mc1, c2: mc2, x: mx, y: my, w: mw, h: mh, scrollX: vp.scrollX, scrollY: vp.scrollY }];
+  const [tr1, tr2] = rowsIn(sp.sy, th), [lc1, lc2] = colsIn(sp.sx, lw);
+  if (th) panes.push({ r1: tr1, r2: tr2, c1: mc1, c2: mc2, x: mx, y: headerH, w: mw, h: th, scrollX: vp.scrollX, scrollY: sp.sy });
+  if (lw) panes.push({ r1: mr1, r2: mr2, c1: lc1, c2: lc2, x: headerW, y: my, w: lw, h: mh, scrollX: sp.sx, scrollY: vp.scrollY });
+  if (th && lw) panes.push({ r1: tr1, r2: tr2, c1: lc1, c2: lc2, x: headerW, y: headerH, w: lw, h: th, scrollX: sp.sx, scrollY: sp.sy });
+  return panes;
+};
+
+/** The pane under a point (cells, or the header strip beside it). Screen points for mirrored panes. */
+export const paneAt = (panes: Pane[], vp: Viewport, x: number, y: number): Pane => {
+  const m = !!panes[0]?.m;
+  const lx = m ? vp.width - x : x;
+  const L = (p: Pane) => (m ? vp.width - p.x - p.w : p.x);
+  const px = Math.max(lx, vp.headerW), py = Math.max(y, vp.headerH);
+  return panes.find((p) => px >= L(p) && px < L(p) + p.w + SPLIT_BAR && py >= p.y && py < p.y + p.h + SPLIT_BAR)
+    ?? panes.find((p) => px >= L(p) && px < L(p) + p.w && py >= p.y && py < p.y + p.h) ?? panes[0]!;
+};
+
+/** Panes in screen pixels (mirrored on a right-to-left sheet). */
+export const panesOf = (vp: Viewport): Pane[] => (vp.rtl ? panesL(vp).map((p) => ({ ...p, x: vp.width - p.x - p.w, m: true })) : panesL(vp));
+
+/** Panes in logical pixels: column A on the left. */
+export const panesL = (vp: Viewport): Pane[] => {
+  if (vp.split && !vp.frozenRows && !vp.frozenCols && (vp.split.w > 0 || vp.split.h > 0)) return splitPanes(vp, vp.split);
   const { layout, zoom, headerW, headerH, width, height, frozenRows: fr, frozenCols: fc } = vp;
   const frozenH = layout.rows.start(fr) * zoom, frozenW = layout.cols.start(fc) * zoom;
   const baseY = layout.rows.start(fr), baseX = layout.cols.start(fc);
@@ -83,15 +142,60 @@ export const panesOf = (vp: Viewport): Pane[] => {
   return panes;
 };
 
-/** Screen rectangle of a cell range inside a pane (may extend past the pane). */
+/** Rectangle of a cell range inside a pane (may extend past the pane): screen pixels for a mirrored pane, else as the pane. */
 export const rectIn = (p: Pane, vp: Viewport, r: CellRange): { x: number; y: number; w: number; h: number } => {
   const { layout, zoom } = vp;
-  const x = p.x + (layout.cols.start(r.c1) - p.scrollX) * zoom;
-  const y = p.y + (layout.rows.start(r.r1) - p.scrollY) * zoom;
-  return { x, y, w: (layout.cols.start(r.c2 + 1) - layout.cols.start(r.c1)) * zoom, h: (layout.rows.start(r.r2 + 1) - layout.rows.start(r.r1)) * zoom };
+  const [r1, r2] = vp.rowOrder ? vp.rowOrder.displaySpan(r.r1, r.r2) : [r.r1, r.r2];
+  const off = (layout.cols.start(r.c1) - p.scrollX) * zoom;
+  const w = (layout.cols.start(r.c2 + 1) - layout.cols.start(r.c1)) * zoom;
+  const x = p.m ? p.x + p.w - off - w : p.x + off;
+  const y = p.y + (layout.rows.start(r1) - p.scrollY) * zoom;
+  return { x, y, w, h: (layout.rows.start(r2 + 1) - layout.rows.start(r1)) * zoom };
 };
 
-export const paneFor = (panes: Pane[], vp: Viewport, row: number, col: number): Pane => {
+/** Screen rectangle of a cell range, in the pane that shows its first cell. */
+export const cellRect = (vp: Viewport, r: CellRange): { x: number; y: number; w: number; h: number } => rectIn(paneFor(panesOf(vp), vp, r.r1, r.c1), vp, r);
+
+/** Screen box of an object anchored at a cell with offsets and a size (unzoomed sheet pixels). */
+export const anchorBox = (vp: Viewport, a: { row: number; col: number; dx: number; dy: number; width: number; height: number }): { left: number; top: number; width: number; height: number } => {
+  const r = rectIn(paneFor(panesOf(vp), vp, a.row, a.col), vp, { r1: a.row, c1: a.col, r2: a.row, c2: a.col });
+  const width = a.width * vp.zoom, height = a.height * vp.zoom;
+  const left = vp.rtl ? r.x + r.w - a.dx * vp.zoom - width : r.x + a.dx * vp.zoom;
+  return { left, top: r.y + a.dy * vp.zoom, width, height };
+};
+
+/** Change in logical x for a box dragged on screen: `dl` moves its left edge, `dw` its width. */
+export const logicalDx = (vp: Pick<Viewport, 'rtl'>, dl: number, dw: number): number => (vp.rtl ? -(dl + dw) : dl);
+
+/** Unzoomed sheet pixels under a screen point, using the pane under it. */
+export const screenToSheet = (vp: Viewport, x: number, y: number): [number, number] => {
+  const lx = vp.rtl ? vp.width - x : x;
+  const p = paneAt(panesL(vp), vp, lx, y);
+  return [(Math.max(lx, vp.headerW) - p.x) / vp.zoom + p.scrollX, (Math.max(y, vp.headerH) - p.y) / vp.zoom + p.scrollY];
+};
+
+/** Screen point of unzoomed sheet pixels, in the pane that shows them (the main pane first). */
+export const sheetToScreen = (vp: Viewport, sx: number, sy: number): [number, number] => {
+  const panes = panesL(vp);
+  const shows = (p: Pane) => sx >= p.scrollX && sx <= p.scrollX + p.w / vp.zoom && sy >= p.scrollY && sy <= p.scrollY + p.h / vp.zoom;
+  const p = panes.find(shows) ?? panes[0]!;
+  const lx = p.x + (sx - p.scrollX) * vp.zoom;
+  return [vp.rtl ? vp.width - lx : lx, p.y + (sy - p.scrollY) * vp.zoom];
+};
+
+/** First strong direction of a string (Unicode bidi rules P2/P3): 'rtl', 'ltr', or null when it has none. */
+export const firstStrong = (s: string): 'rtl' | 'ltr' | null => {
+  const m = /[A-Za-z\u00C0-\u024F\u0370-\u052F\u0900-\u0DFF\u0E00-\u0FFF\u1100-\u11FF\u3040-\u9FFF\uAC00-\uD7AF]|[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF]/.exec(s);
+  if (!m) return null;
+  const c = m[0].charCodeAt(0);
+  return (c >= 0x590 && c <= 0x8ff) || (c >= 0xfb1d && c <= 0xfdff) || c >= 0xfe70 ? 'rtl' : 'ltr';
+};
+
+export const paneFor = (panes: Pane[], vp: Viewport, dataRow: number, col: number): Pane => {
+  const row = vp.rowOrder ? vp.rowOrder.toDisplay(dataRow) : dataRow;
+  if (vp.split && !vp.frozenRows && !vp.frozenCols && panes.length > 1) {
+    return panes.find((p) => row >= p.r1 && row <= p.r2 && col >= p.c1 && col <= p.c2) ?? panes[0]!;
+  }
   const inFr = row < vp.frozenRows, inFc = col < vp.frozenCols;
   return panes.find((p) => (inFr ? p.scrollY === 0 && p.r2 < vp.frozenRows : p.r1 >= vp.frozenRows || p.scrollY !== 0) && (inFc ? p.scrollX === 0 && p.c2 < vp.frozenCols : p.c1 >= vp.frozenCols || p.scrollX !== 0)) ?? panes[0]!;
 };
@@ -100,7 +204,17 @@ interface CellDraw { text: string; color?: string; align: 'left' | 'right' | 'ce
 
 export class SheetRenderer {
   private measureCache = new Map<string, number>();
+  /** Drawing a right-to-left sheet: the canvas is mirrored, so glyphs are drawn un-mirrored. */
+  private mirror = false;
   constructor(private readonly ctx: CanvasRenderingContext2D) {}
+
+  /** Draws text whose left edge is at logical x (width w), readable on a mirrored canvas, in its own bidi direction. */
+  private glyphs(text: string, x: number, y: number, w: number): void {
+    const ctx = this.ctx;
+    ctx.direction = firstStrong(text) === 'rtl' ? 'rtl' : 'ltr';
+    if (!this.mirror) { ctx.fillText(text, x, y); return; }
+    ctx.save(); ctx.scale(-1, 1); ctx.fillText(text, -x - w, y); ctx.restore();
+  }
 
   private measure(font: string, text: string): number {
     const k = font + '\u0001' + text;
@@ -117,9 +231,13 @@ export class SheetRenderer {
   draw(store: GridStore, vp: Viewport, theme: Theme, ov: Overlay): void {
     const ctx = this.ctx;
     const sheet = store.sheet;
-    const panes = panesOf(vp);
+    const panes = panesL(vp);
     const cf = new CfEvaluator(store);
     ctx.save();
+    this.mirror = !!vp.rtl;
+    if (this.mirror) { ctx.translate(vp.width, 0); ctx.scale(-1, 1); }
+    ctx.direction = 'ltr';
+    ctx.textAlign = 'left';
     ctx.fillStyle = theme.bg;
     ctx.fillRect(0, 0, vp.width, vp.height);
     for (const p of panes) this.drawPane(store, vp, theme, p, cf, ov);
@@ -129,6 +247,11 @@ export class SheetRenderer {
     ctx.lineWidth = 1;
     if (vp.frozenRows) { const y = vp.headerH + vp.layout.rows.start(vp.frozenRows) * vp.zoom + 0.5; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(vp.width, y); ctx.stroke(); }
     if (vp.frozenCols) { const x = vp.headerW + vp.layout.cols.start(vp.frozenCols) * vp.zoom + 0.5; ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, vp.height); ctx.stroke(); }
+    if (panes.length > 1 && vp.split && !vp.frozenRows && !vp.frozenCols) {
+      ctx.fillStyle = theme.headerLine;
+      if (vp.split.h > 0) ctx.fillRect(0, vp.headerH + vp.split.h, vp.width, SPLIT_BAR);
+      if (vp.split.w > 0) ctx.fillRect(vp.headerW + vp.split.w, 0, SPLIT_BAR, vp.height);
+    }
     // Selection, references and fill preview drawn over every pane, clipped to the cell area.
     ctx.save();
     ctx.beginPath(); ctx.rect(vp.headerW, vp.headerH, vp.width - vp.headerW, vp.height - vp.headerH); ctx.clip();
@@ -143,9 +266,10 @@ export class SheetRenderer {
     ctx.fillStyle = theme.header;
     ctx.fillRect(0, 0, vp.headerW, vp.headerH);
     ctx.fillStyle = theme.headerLine;
-    ctx.beginPath(); ctx.moveTo(vp.headerW - 4, vp.headerH - 4); ctx.lineTo(vp.headerW - 4, 6); ctx.lineTo(vp.headerW - 4 - (vp.headerH - 10), vp.headerH - 4); ctx.closePath(); ctx.fill();
-    void sheet;
+    { const oh = vp.outlineH ?? 0; ctx.beginPath(); ctx.moveTo(vp.headerW - 4, vp.headerH - 4); ctx.lineTo(vp.headerW - 4, oh + 6); ctx.lineTo(vp.headerW - 4 - (vp.headerH - oh - 10), vp.headerH - 4); ctx.closePath(); ctx.fill(); }
+    if (sheet.view.showHeaders) drawOutline(ctx, store, vp, theme);
     ctx.restore();
+    this.mirror = false;
   }
 
   private cellDraw(store: GridStore, row: number, col: number, cf: CfEvaluator, showFormulas: boolean): CellDraw {
@@ -156,15 +280,15 @@ export class SheetRenderer {
     const merged = res?.style ? mergeShallow(style, res.style) : style;
     let text = '', color: string | undefined, align: CellDraw['align'] = 'left';
     let repeat: CellDraw['repeat'];
-    if (showFormulas && c?.f) { text = `=${c.f}`; }
+    if (showFormulas && c?.f) { text = `=${store.shownFormula(c.f, row, col)}`; }
     else if (v !== null && !res?.hideValue) {
       if (v instanceof CellError) { text = v.code; align = 'center'; }
       else if (typeof v === 'boolean') { text = v ? 'TRUE' : 'FALSE'; align = 'center'; }
       else {
-        const f = formatValue(v, merged.numFmt ?? 'General', { date1904: store.wb.date1904 });
-        text = f.text; color = f.color;
+        const f = formatValue(v, displayFormat(merged.numFmt) ?? 'General', { date1904: store.wb.date1904 });
+        text = typeof v === 'number' ? localizeNumberText(f.text, merged.numFmt) : f.text; color = f.color;
         if (f.fill !== undefined && f.fillAt !== undefined) repeat = { ch: f.fill, at: f.fillAt };
-        align = typeof v === 'number' ? 'right' : 'left';
+        align = generalAlign(v, f.text, !!store.sheet.view.rtl, !!merged.align?.rtl);
         if (f.align) align = f.align;
       }
     }
@@ -194,18 +318,22 @@ export class SheetRenderer {
       return d;
     };
     const hasContent = (r: number, c: number) => store.value(r, c) !== null || (ov.editing?.row === r && ov.editing.col === c);
+    // Loops run over display rows; cells are looked up by data row.
+    const order = vp.rowOrder;
+    const D = (r: number) => (order ? order.toData(r) : r);
 
     // Fills.
     for (let r = p.r1; r <= p.r2; r++) {
       const h = layout.rows.size(r) * zoom;
       if (!h) continue;
       const y = rowY(r);
+      const dr = D(r);
       for (let c = p.c1; c <= p.c2; c++) {
         const w = layout.cols.size(c) * zoom;
         if (!w) continue;
-        const m = mergeAt(r, c);
-        if (m && (m.r1 !== r || m.c1 !== c) && !(r === p.r1 && m.r1 < r) && !(c === p.c1 && m.c1 < c)) continue;
-        const d = m ? get(m.r1, m.c1) : get(r, c);
+        const m = mergeAt(dr, c);
+        if (m && (m.r1 !== dr || m.c1 !== c) && !(r === p.r1 && m.r1 < dr) && !(c === p.c1 && m.c1 < c)) continue;
+        const d = m ? get(m.r1, m.c1) : get(dr, c);
         if (!d.fill && !d.style.fill?.pattern && !d.style.fill?.gradient) continue;
         const rect = m ? rectIn(p, vp, m) : { x: colX(c), y, w, h };
         if (d.style.fill?.gradient && !d.cf?.fill) {
@@ -234,8 +362,8 @@ export class SheetRenderer {
         ctx.fillRect(rect.x, rect.y, rect.w - 1, rect.h - 1);
       }
       for (let r = p.r1; r <= p.r2; r++) for (let c = p.c1; c <= p.c2; c++) {
-        if (mergeAt(r, c)) continue;
-        const d = get(r, c);
+        if (mergeAt(D(r), c)) continue;
+        const d = get(D(r), c);
         if (!d.fill) continue;
         ctx.fillStyle = d.fill;
         const x = colX(c), y = rowY(r), w = layout.cols.size(c) * zoom, h = layout.rows.size(r) * zoom;
@@ -247,12 +375,13 @@ export class SheetRenderer {
       const h = layout.rows.size(r) * zoom;
       if (!h) continue;
       const y = rowY(r);
+      const dr = D(r);
       for (let c = xc1; c <= xc2; c++) {
         const w = layout.cols.size(c) * zoom;
         if (!w) continue;
-        const m = mergeAt(r, c) ?? sheet.merges.find((mm) => inRange(mm, r, c));
-        if (m && (m.r1 !== r || m.c1 !== c)) { if (!(r === p.r1 && c === Math.max(p.c1, m.c1))) continue; }
-        const anchorR = m ? m.r1 : r, anchorC = m ? m.c1 : c;
+        const m = mergeAt(dr, c) ?? sheet.merges.find((mm) => inRange(mm, dr, c));
+        if (m && (m.r1 !== dr || m.c1 !== c)) { if (!(r === p.r1 && c === Math.max(p.c1, m.c1))) continue; }
+        const anchorR = m ? m.r1 : dr, anchorC = m ? m.c1 : c;
         const ck = cellKey(anchorR, anchorC);
         if (!hasContent(anchorR, anchorC) && !store.sheet.notes.has(ck) && !store.sheet.comments?.has(ck)) continue;
         if (ov.editing && ov.editing.row === anchorR && ov.editing.col === anchorC) continue;
@@ -269,11 +398,13 @@ export class SheetRenderer {
           ctx.fillStyle = store.sheet.comments.get(ck)!.resolved ? theme.headerInk : theme.dark ? '#b197fc' : '#7048e8';
           ctx.beginPath(); ctx.moveTo(rect.x + 1, rect.y + 1); ctx.lineTo(rect.x + 8 * zoom, rect.y + 1); ctx.lineTo(rect.x + 1, rect.y + 8 * zoom); ctx.fill();
         }
+        if (!ov.showFormulas && drawCellImage(ctx, store, rect, anchorR, anchorC, zoom)) continue;
         if (d.style.checkbox && typeof d.v === 'boolean' && !ov.showFormulas) { this.drawCheckbox(rect, d.v, zoom, theme); continue; }
         if (!d.text) continue;
         this.drawText(store, vp, p, d, rect, anchorR, anchorC, !!m, hasContent, theme, d.cf?.icon ? 18 * zoom : 0);
       }
     }
+    for (const paint of panePainters) paint(ctx, store, { pane: p, vp, colX, rowY, dark: theme.dark, merges });
     // Borders.
     for (let r = p.r1; r <= p.r2; r++) {
       const y = rowY(r), h = layout.rows.size(r) * zoom;
@@ -281,7 +412,7 @@ export class SheetRenderer {
       for (let c = p.c1; c <= p.c2; c++) {
         const w = layout.cols.size(c) * zoom;
         if (!w) continue;
-        const b = this.borderOf(store, r, c, get);
+        const b = this.borderOf(store, D(r), c, get, D(r + 1));
         if (!b) continue;
         const x = colX(c);
         if (b.top) this.line(b.top, x, y, x + w, y, theme);
@@ -308,11 +439,11 @@ export class SheetRenderer {
     ctx.restore();
   }
 
-  private borderOf(store: GridStore, r: number, c: number, get: (r: number, c: number) => CellDraw): CellStyle['border'] | null {
+  private borderOf(store: GridStore, r: number, c: number, get: (r: number, c: number) => CellDraw, under = r + 1): CellStyle['border'] | null {
     const own = get(r, c).style.border;
     // A neighbour's matching edge also draws (files store borders on either cell).
     const right = c + 1 < MAX_COLS && store.sheet.cells.has(cellKey(r, c + 1)) ? get(r, c + 1).style.border?.left : undefined;
-    const below = r + 1 < MAX_ROWS && store.sheet.cells.has(cellKey(r + 1, c)) ? get(r + 1, c).style.border?.top : undefined;
+    const below = under < MAX_ROWS && store.sheet.cells.has(cellKey(under, c)) ? get(under, c).style.border?.top : undefined;
     if (!own && !right && !below) return null;
     return { ...own, right: own?.right ?? right, bottom: own?.bottom ?? below };
   }
@@ -354,6 +485,8 @@ export class SheetRenderer {
     const lineH = fontPx * 1.22;
     let text = d.text;
     let { x, w } = rect;
+    // Alignment is on screen; the canvas may be mirrored, so work in logical terms here.
+    const align: CellDraw['align'] = this.mirror ? (d.align === 'left' ? 'right' : d.align === 'right' ? 'left' : 'center') : d.align;
     const isNum = typeof d.v === 'number';
     let tw = this.measure(font, text);
     const avail = rect.w - pad * 2 - indent - iconPad;
@@ -380,14 +513,14 @@ export class SheetRenderer {
     // Overflow into empty neighbours for unwrapped text.
     let clipX = rect.x, clipW = rect.w;
     if (!wrap && !merged && !isNum && tw > avail && st.align?.rotation === undefined) {
-      if (d.align === 'left' || d.align === 'center') {
+      if (align === 'left' || align === 'center') {
         let c = col + 1;
         let extra = 0;
         while (c < MAX_COLS && extra + rect.w < tw + pad * 2 + indent && !hasContent(row, c) && c <= p.c2 + 12) { extra += layout.cols.size(c) * zoom; c++; }
         clipW += extra;
-        if (d.align === 'center') { let cl = col - 1, left = 0; while (cl >= 0 && left < extra && !hasContent(row, cl)) { left += layout.cols.size(cl) * zoom; cl--; } clipX -= left; clipW += left; x -= left; w += left + extra; }
+        if (align === 'center') { let cl = col - 1, left = 0; while (cl >= 0 && left < extra && !hasContent(row, cl)) { left += layout.cols.size(cl) * zoom; cl--; } clipX -= left; clipW += left; x -= left; w += left + extra; }
       }
-      if (d.align === 'right') {
+      if (align === 'right') {
         let c = col - 1, extra = 0;
         while (c >= 0 && extra + rect.w < tw + pad * 2 && !hasContent(row, c)) { extra += layout.cols.size(c) * zoom; c--; }
         clipX -= extra; clipW += extra;
@@ -407,6 +540,7 @@ export class SheetRenderer {
     if (rot !== undefined && rot !== 0) {
       const angle = rot === 255 ? 0 : rot <= 90 ? -rot : rot - 90;
       ctx.translate(rect.x + rect.w / 2, rect.y + rect.h / 2);
+      if (this.mirror) ctx.scale(-1, 1);
       if (rot === 255) {
         const chars = [...text];
         chars.forEach((ch, i) => { const cw = this.measure(font, ch); ctx.fillText(ch, -cw / 2, -((chars.length - 1) * lineH) / 2 + i * lineH + ascent / 2); });
@@ -419,10 +553,10 @@ export class SheetRenderer {
     }
     for (const ln of lines) {
       const lw = this.measure(font, ln);
-      let tx = d.align === 'right' ? x + w - pad - lw - indent : d.align === 'center' ? x + (w - lw) / 2 : x + pad + indent + iconPad;
-      if (d.align === 'right' && iconPad) tx = Math.max(tx, rect.x + iconPad);
+      let tx = align === 'right' ? x + w - pad - lw - indent : align === 'center' ? x + (w - lw) / 2 : x + pad + indent + iconPad;
+      if (align === 'right' && iconPad) tx = Math.max(tx, rect.x + iconPad);
       if (st.align?.h === 'centerContinuous') tx = rect.x + (rect.w - lw) / 2;
-      ctx.fillText(ln, tx, ty);
+      this.glyphs(ln, tx, ty, lw);
       if (st.font?.underline) {
         ctx.fillRect(tx, ty + 2 * zoom, lw, Math.max(1, zoom));
         if (st.font.underline.startsWith('double')) ctx.fillRect(tx, ty + 4 * zoom, lw, Math.max(1, zoom));
@@ -460,6 +594,7 @@ export class SheetRenderer {
     const size = Math.max(8, Math.min(14 * zoom, rect.h - 4, rect.w - 4));
     const x = Math.round(rect.x + (rect.w - size) / 2) + 0.5, y = Math.round(rect.y + (rect.h - size) / 2) + 0.5;
     ctx.save();
+    if (this.mirror) { ctx.translate(x * 2 + size, 0); ctx.scale(-1, 1); }
     ctx.lineWidth = Math.max(1, 1.4 * zoom);
     ctx.beginPath(); ctx.roundRect(x, y, size, size, 2.5 * zoom);
     if (on) { ctx.fillStyle = theme.accent; ctx.fill(); }
@@ -542,9 +677,9 @@ export class SheetRenderer {
     const rowSel = (r: number) => sel.some((x) => r >= x.r1 && r <= x.r2);
     ctx.font = `400 ${(11 * zoom).toFixed(1)}px "Hanken Grotesk", system-ui, sans-serif`;
     ctx.textBaseline = 'middle';
-    ctx.textAlign = 'center';
+    const ow = vp.outlineW ?? 0, oh = vp.outlineH ?? 0;
     // Column header strip.
-    ctx.fillStyle = theme.header; ctx.fillRect(vp.headerW, 0, vp.width, vp.headerH);
+    ctx.fillStyle = theme.header; ctx.fillRect(vp.headerW, oh, vp.width, vp.headerH - oh);
     for (const p of panes.filter((x) => x.y === vp.headerH + layout.rows.start(vp.frozenRows) * zoom || x.r2 < vp.frozenRows ? true : true)) {
       if (p.r2 < vp.frozenRows && panes.some((q) => q !== p && q.c1 === p.c1 && q.r2 >= vp.frozenRows)) continue;
       ctx.save(); ctx.beginPath(); ctx.rect(p.x, 0, p.w, vp.headerH); ctx.clip();
@@ -553,16 +688,16 @@ export class SheetRenderer {
         if (!w) continue;
         const x = p.x + (layout.cols.start(c) - p.scrollX) * zoom;
         const on = colSel(c), full = fullCol(c);
-        if (on) { ctx.fillStyle = full ? theme.accent : theme.headerSel; ctx.fillRect(x, 0, w, vp.headerH); }
+        if (on) { ctx.fillStyle = full ? theme.accent : theme.headerSel; ctx.fillRect(x, oh, w, vp.headerH - oh); }
         ctx.fillStyle = full ? '#ffffff' : on ? theme.headerSelInk : theme.headerInk;
-        ctx.fillText(colName(c), x + w / 2, vp.headerH / 2 + 0.5);
-        ctx.fillStyle = theme.headerLine; ctx.fillRect(Math.round(x + w) - 1, 0, 1, vp.headerH);
+        { const label = store.r1c1 ? String(c + 1) : colName(c); const lw = this.measure(ctx.font, label); this.glyphs(label, x + (w - lw) / 2, oh + (vp.headerH - oh) / 2 + 0.5, lw); }
+        ctx.fillStyle = theme.headerLine; ctx.fillRect(Math.round(x + w) - 1, oh, 1, vp.headerH - oh);
         if (on && !full) { ctx.fillStyle = theme.accent; ctx.fillRect(x, vp.headerH - 2, w, 2); }
       }
       ctx.restore();
     }
     // Row header strip.
-    ctx.fillStyle = theme.header; ctx.fillRect(0, vp.headerH, vp.headerW, vp.height);
+    ctx.fillStyle = theme.header; ctx.fillRect(ow, vp.headerH, vp.headerW - ow, vp.height);
     for (const p of panes) {
       if (p.c2 < vp.frozenCols && panes.some((q) => q !== p && q.r1 === p.r1 && q.c2 >= vp.frozenCols)) continue;
       ctx.save(); ctx.beginPath(); ctx.rect(0, p.y, vp.headerW, p.h); ctx.clip();
@@ -570,11 +705,12 @@ export class SheetRenderer {
         const h = layout.rows.size(r) * zoom;
         if (!h) continue;
         const y = p.y + (layout.rows.start(r) - p.scrollY) * zoom;
-        const on = rowSel(r), full = fullRow(r);
-        if (on) { ctx.fillStyle = full ? theme.accent : theme.headerSel; ctx.fillRect(0, y, vp.headerW, h); }
+        const dr = vp.rowOrder ? vp.rowOrder.toData(r) : r;
+        const on = rowSel(dr), full = fullRow(dr);
+        if (on) { ctx.fillStyle = full ? theme.accent : theme.headerSel; ctx.fillRect(ow, y, vp.headerW - ow, h); }
         ctx.fillStyle = full ? '#ffffff' : on ? theme.headerSelInk : theme.headerInk;
-        ctx.fillText(String(r + 1), vp.headerW / 2, y + h / 2 + 0.5);
-        ctx.fillStyle = theme.headerLine; ctx.fillRect(0, Math.round(y + h) - 1, vp.headerW, 1);
+        { const label = String(dr + 1); const lw = this.measure(ctx.font, label); this.glyphs(label, ow + (vp.headerW - ow - lw) / 2, y + h / 2 + 0.5, lw); }
+        ctx.fillStyle = theme.headerLine; ctx.fillRect(ow, Math.round(y + h) - 1, vp.headerW - ow, 1);
         if (on && !full) { ctx.fillStyle = theme.accent; ctx.fillRect(vp.headerW - 2, y, 2, h); }
       }
       ctx.restore();
@@ -582,7 +718,6 @@ export class SheetRenderer {
     ctx.fillStyle = theme.headerLine;
     ctx.fillRect(0, vp.headerH - 1, vp.width, 1);
     ctx.fillRect(vp.headerW - 1, 0, 1, vp.height);
-    ctx.textAlign = 'start';
   }
 
   private drawSelection(store: GridStore, vp: Viewport, theme: Theme, p: Pane, ov: Overlay): void {
@@ -612,7 +747,7 @@ export class SheetRenderer {
     const ar = rectIn(p, vp, am);
     ctx.fillStyle = theme.selFill;
     for (const r of sel.ranges) {
-      const rect = rectIn(p, vp, clampVisible(r, p));
+      const rect = rectIn(p, vp, vp.rowOrder ? { ...clampVisible(r, p), r1: r.r1, r2: r.r2 } : clampVisible(r, p));
       const hasActive = inRange(r, am.r1, am.c1);
       if (!hasActive) { ctx.fillRect(rect.x, rect.y, rect.w, rect.h); continue; }
       ctx.fillRect(rect.x, rect.y, rect.w, Math.max(0, ar.y - rect.y));
@@ -653,6 +788,14 @@ export class SheetRenderer {
     }
   }
 }
+
+/** Where General alignment puts a value on screen: numbers to the trailing edge of the sheet, text by its own first strong direction. */
+export const generalAlign = (v: Scalar, text: string, sheetRtl: boolean, cellRtl: boolean): 'left' | 'right' => {
+  if (typeof v === 'number') return sheetRtl ? 'left' : 'right';
+  if (cellRtl) return 'right';
+  const d = firstStrong(text);
+  return d === 'rtl' ? 'right' : d === 'ltr' ? 'left' : sheetRtl ? 'right' : 'left';
+};
 
 const clampVisible = (r: CellRange, p: Pane): CellRange => ({ r1: Math.max(r.r1, p.r1 - 1), c1: Math.max(r.c1, p.c1 - 1), r2: Math.min(r.r2, p.r2 + 1), c2: Math.min(r.c2, p.c2 + 1) });
 

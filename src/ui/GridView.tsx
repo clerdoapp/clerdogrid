@@ -2,17 +2,20 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { MAX_COLS, MAX_ROWS } from '../engine/types';
 import { cellKey, colName, parseRange, type CellRange } from '../model/workbook';
 import { layoutOf, pxToChars, pxToPt } from '../app/layout';
+import { withRowOrder } from '../app/rowOrder';
 import { applyPainter, painter, run } from '../app/commands';
 import { autoFill } from '../app/ops/fill';
 import { clearClipboardMarquee } from '../app/ops/clipboard';
 import { inRange, rangeOf, type GridStore, type Pos } from '../app/store';
-import { panesOf, readTheme, SheetRenderer, cssFont, rectIn, paneFor, type Viewport, type Overlay } from './render';
-import { handleGridKey } from './keys';
+import { panesOf, panesL, paneAt, readTheme, SheetRenderer, cssFont, rectIn, paneFor, type Viewport, type Overlay } from './render';
+import { arrowDelta, handleGridKey } from './keys';
 import { FormulaAssist } from './FormulaAssist';
 import { ChartLayer } from './ChartLayer';
 import { listOptions } from '../app/validation';
 import { filterPopupFor } from './FilterPopup';
-import { gridHooks } from './panelRegistry';
+import { activeStageView, gridHooks } from './panelRegistry';
+import { outlineClick, outlineSize } from './outlineGutter';
+import { toR1C1 } from '../engine/r1c1';
 
 const REF_COLORS = ['#2f6fdf', '#d6336c', '#0c8a50', '#9c36b5', '#e8590c', '#0c8599', '#b08800'];
 const COL_HEADER = 22;
@@ -20,7 +23,9 @@ const COL_HEADER = 22;
 /** Scrollable area is capped (browsers limit element sizes), so large sheets map scroll position proportionally. */
 const MAX_SCROLL = 8_000_000;
 
-export interface GridApi { scrollTo: (row: number, col: number) => void }
+export interface GridApi { scrollTo: (row: number, col: number) => void; scrollToPx?: (x: number, y: number) => void; viewport?: () => Viewport }
+/** The grid on screen, for commands that need to scroll or measure it (split, zoom to selection). */
+export const activeGrid: { current: GridApi | null } = { current: null };
 
 export const refsInFormula = (text: string): string[] => {
   if (!text.startsWith('=')) return [];
@@ -47,11 +52,14 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
   const pointer = useRef<{ mode: 'select' | 'fill' | 'resize' | 'pickRef' | 'move' | 'header'; start: Pos; headerAxis?: 'row' | 'col'; refStart?: number; refLen?: number } | null>(null);
 
   const sheet = store.sheet;
+  const rtl = !!sheet.view.rtl;
   const zoom = (sheet.view.zoom / 100) * (matchMedia('(pointer: coarse)').matches ? 1.15 : 1);
-  const layout = layoutOf(sheet, store.layoutVersion, store.wb.styles);
+  const rowOrder = store.rowOrderOf(sheet);
+  const layout = withRowOrder(layoutOf(sheet, store.layoutVersion, store.wb.styles), rowOrder);
   const digits = String(Math.min(MAX_ROWS, layout.rows.at(scroll.y + size.h / zoom) + 1)).length;
-  const headerW = sheet.view.showHeaders ? Math.round(Math.max(3, digits) * 8 * zoom + 14) : 0;
-  const headerH = sheet.view.showHeaders ? Math.round(COL_HEADER * zoom) : 0;
+  const gutter = outlineSize(sheet, zoom);
+  const headerW = sheet.view.showHeaders ? Math.round(Math.max(3, digits) * 8 * zoom + 14) + gutter.w : 0;
+  const headerH = sheet.view.showHeaders ? Math.round(COL_HEADER * zoom) + gutter.h : 0;
   const totalW = layout.cols.start(MAX_COLS), totalH = layout.rows.start(MAX_ROWS);
   // How far the content can scroll in sheet pixels, and the spacer size used to provide it.
   const usedB = store.engine.usedBounds(store.sheetIndex);
@@ -64,7 +72,11 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
 
   const vp: Viewport = {
     layout, zoom, headerW, headerH, width: size.w, height: size.h,
-    scrollX: scroll.x, scrollY: scroll.y, frozenRows: sheet.view.frozenRows, frozenCols: sheet.view.frozenCols,
+    scrollX: scroll.x, scrollY: scroll.y, frozenRows: sheet.view.frozenRows, frozenCols: sheet.view.frozenCols, rowOrder, rtl,
+    outlineW: gutter.w || undefined, outlineH: gutter.h || undefined,
+    split: sheet.view.split && !sheet.view.frozenRows && !sheet.view.frozenCols
+      ? { w: Math.min(sheet.view.split.x * zoom, Math.max(0, size.w - headerW - 40)), h: Math.min(sheet.view.split.y * zoom, Math.max(0, size.h - headerH - 40)), sx: sheet.view.split.scrollX, sy: sheet.view.split.scrollY }
+      : undefined,
   };
 
   // ---------- Size and scroll ----------
@@ -78,15 +90,20 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
 
   const onScroll = useCallback(() => {
     const el = scroller.current!;
-    setScroll({ x: (el.scrollLeft / zoom) * scaleX, y: (el.scrollTop / zoom) * scaleY });
+    // A right-to-left scroller counts scrollLeft down from 0.
+    setScroll({ x: (Math.abs(el.scrollLeft) / zoom) * scaleX, y: (el.scrollTop / zoom) * scaleY });
     if (list) setList(null);
   }, [zoom, scaleX, scaleY, list]);
 
-  const scrollTo = useCallback((row: number, col: number) => {
+  const scrollTo = useCallback((dataRow: number, col: number) => {
     const el = scroller.current;
     if (!el) return;
+    const row = rowOrder ? rowOrder.toDisplay(dataRow) : dataRow;
     const fr = sheet.view.frozenRows, fc = sheet.view.frozenCols;
-    const viewH = (size.h - headerH) / zoom - layout.rows.start(fr), viewW = (size.w - headerW) / zoom - layout.cols.start(fc);
+    const splitPanes = vp.split ? panesOf(vp) : null;
+    if (splitPanes?.slice(1).some((p) => row >= p.r1 && row < p.r2 && col >= p.c1 && col < p.c2)) return;
+    const main = splitPanes ? splitPanes[0]! : null;
+    const viewH = main ? main.h / zoom : (size.h - headerH) / zoom - layout.rows.start(fr), viewW = main ? main.w / zoom : (size.w - headerW) / zoom - layout.cols.start(fc);
     let { x, y } = scroll;
     if (row >= fr) {
       const top = layout.rows.start(row) - layout.rows.start(fr), bottom = layout.rows.start(row + 1) - layout.rows.start(fr);
@@ -98,11 +115,41 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     }
     if (x !== scroll.x || y !== scroll.y) {
       el.scrollTop = (Math.max(0, y) * zoom) / scaleY;
-      el.scrollLeft = (Math.max(0, x) * zoom) / scaleX;
+      el.scrollLeft = (rtl ? -1 : 1) * (Math.max(0, x) * zoom) / scaleX;
       setScroll({ x: Math.max(0, x), y: Math.max(0, y) });
     }
-  }, [scroll, size, zoom, layout, headerH, headerW, sheet.view.frozenRows, sheet.view.frozenCols, scaleX, scaleY]);
-  if (apiRef) apiRef.current = { scrollTo };
+  }, [scroll, size, zoom, layout, headerH, headerW, sheet.view.frozenRows, sheet.view.frozenCols, scaleX, scaleY, vp.split?.w, vp.split?.h, vp.split?.sx, vp.split?.sy, rowOrder, rtl]);
+  const scrollToPx = useCallback((x: number, y: number) => {
+    const el = scroller.current;
+    if (!el) return;
+    el.scrollTop = (Math.max(0, y) * zoom) / scaleY;
+    el.scrollLeft = (rtl ? -1 : 1) * (Math.max(0, x) * zoom) / scaleX;
+    setScroll({ x: Math.max(0, x), y: Math.max(0, y) });
+  }, [zoom, scaleX, scaleY, rtl]);
+  if (apiRef) apiRef.current = { scrollTo, scrollToPx, viewport: () => vp };
+  activeGrid.current = { scrollTo, scrollToPx, viewport: () => vp };
+
+  // Top and left split panes scroll on their own; the main pane uses the native scroller.
+  const splitWheel = useRef<(ev: WheelEvent) => void>(() => undefined);
+  splitWheel.current = (ev: WheelEvent) => {
+    const sp = sheet.view.split;
+    if (!vp.split || !sp || ev.ctrlKey || ev.metaKey) return;
+    const rect = wrap.current!.getBoundingClientRect();
+    const x = rtl ? rect.right - ev.clientX : ev.clientX - rect.left, y = ev.clientY - rect.top;
+    const inTop = vp.split.h > 0 && y < headerH + vp.split.h, inLeft = vp.split.w > 0 && x < headerW + vp.split.w;
+    const dy = ev.shiftKey && !ev.deltaX ? 0 : ev.deltaY, dx = (rtl ? -1 : 1) * (ev.shiftKey && !ev.deltaX ? ev.deltaY : ev.deltaX);
+    let used = false;
+    if (inTop && dy) { sp.scrollY = Math.max(0, sp.scrollY + dy / zoom); used = true; }
+    if (inLeft && dx) { sp.scrollX = Math.max(0, sp.scrollX + dx / zoom); used = true; }
+    if (used) { ev.preventDefault(); store.emit(); }
+  };
+  useEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    const f = (ev: WheelEvent) => splitWheel.current(ev);
+    el.addEventListener('wheel', f, { passive: false });
+    return () => el.removeEventListener('wheel', f);
+  }, []);
 
   // Keep the active cell in view when it moves.
   const active = store.sel.active;
@@ -112,8 +159,8 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     if (k !== lastActive.current) { lastActive.current = k; scrollTo(active.row, active.col); }
   });
 
-  // Reset the scroll when switching sheets.
-  useEffect(() => { const el = scroller.current; if (el) { el.scrollTop = 0; el.scrollLeft = 0; } setScroll({ x: 0, y: 0 }); }, [store.sheetIndex]);
+  // Reset the scroll when switching sheets or the sheet's direction.
+  useEffect(() => { const el = scroller.current; if (el) { el.scrollTop = 0; el.scrollLeft = 0; } setScroll({ x: 0, y: 0 }); }, [store.sheetIndex, rtl]);
 
   // ---------- Drawing ----------
   const editRefs = store.editing ? refsInFormula(store.editing.text) : [];
@@ -160,21 +207,36 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
   const hit = (clientX: number, clientY: number): { area: 'cell' | 'colHeader' | 'rowHeader' | 'corner'; row: number; col: number; x: number; y: number } => {
     const rect = wrap.current!.getBoundingClientRect();
     const x = clientX - rect.left, y = clientY - rect.top;
-    const fh = layout.rows.start(vp.frozenRows) * zoom, fw = layout.cols.start(vp.frozenCols) * zoom;
-    const sx = x - headerW < fw ? (x - headerW) / zoom : (x - headerW - fw) / zoom + layout.cols.start(vp.frozenCols) + scroll.x;
-    const sy = y - headerH < fh ? (y - headerH) / zoom : (y - headerH - fh) / zoom + layout.rows.start(vp.frozenRows) + scroll.y;
-    const col = layout.cols.at(Math.max(0, sx)), row = layout.rows.at(Math.max(0, sy));
+    // Work out the cell in logical pixels (column A on the left), then hand back the screen point.
+    const lx = rtl ? rect.width - x : x;
+    const res = hitLogical(lx, y);
+    return { ...res, x, y };
+  };
+  const hitLogical = (x: number, y: number): { area: 'cell' | 'colHeader' | 'rowHeader' | 'corner'; row: number; col: number } => {
+    let sx: number, sy: number;
+    if (vp.split) {
+      const p = paneAt(panesL(vp), vp, x, y);
+      sx = (Math.max(x, headerW) - p.x) / zoom + p.scrollX;
+      sy = (Math.max(y, headerH) - p.y) / zoom + p.scrollY;
+    } else {
+      const fh = layout.rows.start(vp.frozenRows) * zoom, fw = layout.cols.start(vp.frozenCols) * zoom;
+      sx = x - headerW < fw ? (x - headerW) / zoom : (x - headerW - fw) / zoom + layout.cols.start(vp.frozenCols) + scroll.x;
+      sy = y - headerH < fh ? (y - headerH) / zoom : (y - headerH - fh) / zoom + layout.rows.start(vp.frozenRows) + scroll.y;
+    }
+    const shownRow = layout.rows.at(Math.max(0, sy));
+    const col = layout.cols.at(Math.max(0, sx)), row = rowOrder ? rowOrder.toData(shownRow) : shownRow;
     const area = x < headerW && y < headerH ? 'corner' : y < headerH ? 'colHeader' : x < headerW ? 'rowHeader' : 'cell';
-    return { area, row, col, x, y };
+    return { area, row, col };
   };
 
   const resizeEdge = (h: ReturnType<typeof hit>): { axis: 'row' | 'col'; index: number } | null => {
     if (h.area === 'colHeader') {
       const panes = panesOf(vp);
       const p = paneFor(panes, vp, 0, h.col);
-      const left = rectIn(p, vp, { r1: 0, c1: h.col, r2: 0, c2: h.col });
-      if (Math.abs(h.x - (left.x + left.w)) <= 4) return { axis: 'col', index: h.col };
-      if (Math.abs(h.x - left.x) <= 4 && h.col > 0) return { axis: 'col', index: h.col - 1 };
+      const box = rectIn(p, vp, { r1: 0, c1: h.col, r2: 0, c2: h.col });
+      const end = rtl ? box.x : box.x + box.w, start = rtl ? box.x + box.w : box.x;
+      if (Math.abs(h.x - end) <= 4) return { axis: 'col', index: h.col };
+      if (Math.abs(h.x - start) <= 4 && h.col > 0) return { axis: 'col', index: h.col - 1 };
     }
     if (h.area === 'rowHeader') {
       const panes = panesOf(vp);
@@ -191,7 +253,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     const r = store.range;
     const p = paneFor(panesOf(vp), vp, r.r2, r.c2);
     const rr = rectIn(p, vp, r);
-    return Math.abs(h.x - (rr.x + rr.w)) <= 6 && Math.abs(h.y - (rr.y + rr.h)) <= 6;
+    return Math.abs(h.x - (rtl ? rr.x : rr.x + rr.w)) <= 6 && Math.abs(h.y - (rr.y + rr.h)) <= 6;
   };
 
   const onSelBorder = (h: ReturnType<typeof hit>): boolean => {
@@ -216,11 +278,13 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     const caret = ta?.selectionStart ?? e.text.length;
     const ptr = pointer.current;
     const a = rangeOf(pos, extendTo ?? pos);
-    const text = a.r1 === a.r2 && a.c1 === a.c2 ? `${colName(a.c1)}${a.r1 + 1}` : `${colName(a.c1)}${a.r1 + 1}:${colName(a.c2)}${a.r2 + 1}`;
+    const a1 = a.r1 === a.r2 && a.c1 === a.c2 ? `${colName(a.c1)}${a.r1 + 1}` : `${colName(a.c1)}${a.r1 + 1}:${colName(a.c2)}${a.r2 + 1}`;
+    const text = store.r1c1 ? toR1C1(a1, e.row, e.col) : a1;
     const start = ptr?.mode === 'pickRef' && ptr.refStart !== undefined ? ptr.refStart : caret;
     const len = ptr?.mode === 'pickRef' && ptr.refLen !== undefined ? ptr.refLen : 0;
     const sheetPrefix = store.sheetIndex !== editSheet.current ? `${quoteName(sheet.name)}!` : '';
-    const ins = sheetPrefix + text;
+    const hooked = !extendTo || (a.r1 === a.r2 && a.c1 === a.c2) ? gridHooks().reduce<string | null>((t, g) => t ?? g.refText?.(store, store.sheetIndex, a.r1, a.c1, editSheet.current) ?? null, null) : null;
+    const ins = hooked ?? sheetPrefix + text;
     const next = e.text.slice(0, start) + ins + e.text.slice(start + len);
     store.setEditText(next);
     if (pointer.current) { pointer.current.refStart = start; pointer.current.refLen = ins.length; }
@@ -239,6 +303,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
   const onPointerDown = (ev: React.PointerEvent) => {
     if (ev.button === 2) return;
     const h = hit(ev.clientX, ev.clientY);
+    if ((gutter.w || gutter.h) && outlineClick(store, vp, h.x, h.y)) { wrap.current?.focus({ preventScroll: true }); return; }
     wrap.current?.focus({ preventScroll: true });
     setList(null);
     // Touch: a tap selects, dragging scrolls (the browser handles it).
@@ -268,7 +333,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
         const a = store.sel.anchor;
         store.selectRange(axis === 'col' ? { r1: 0, c1: Math.min(a.col, h.col), r2: MAX_ROWS - 1, c2: Math.max(a.col, h.col) } : { r1: Math.min(a.row, h.row), c1: 0, r2: Math.max(a.row, h.row), c2: MAX_COLS - 1 }, store.sel.active);
       } else {
-        const act = axis === 'col' ? { row: Math.max(0, layout.rows.at(scroll.y + layout.rows.start(sheet.view.frozenRows))), col: h.col } : { row: h.row, col: Math.max(0, layout.cols.at(scroll.x + layout.cols.start(sheet.view.frozenCols))) };
+        const act = axis === 'col' ? { row: (rowOrder ?? { toData: (r: number) => r }).toData(Math.max(0, layout.rows.at(scroll.y + layout.rows.start(sheet.view.frozenRows)))), col: h.col } : { row: h.row, col: Math.max(0, layout.cols.at(scroll.x + layout.cols.start(sheet.view.frozenCols))) };
         if (ev.ctrlKey || ev.metaKey) store.sel = { ranges: [...store.sel.ranges, r], active: act, anchor: { row: h.row, col: h.col } };
         else store.sel = { ranges: [r], active: act, anchor: { row: h.row, col: h.col } };
         store.emit();
@@ -293,9 +358,11 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     if (f) {
       const p = paneFor(panesOf(vp), vp, h.row, h.col);
       const rr = rectIn(p, vp, { r1: h.row, c1: h.col, r2: h.row, c2: h.col });
-      if (h.x >= rr.x + rr.w - 18 * zoom && h.y >= rr.y + rr.h - 18 * zoom) {
+      const onButton = rtl ? h.x <= rr.x + 18 * zoom : h.x >= rr.x + rr.w - 18 * zoom;
+      if (onButton && h.y >= rr.y + rr.h - 18 * zoom) {
         store.select({ row: h.row, col: h.col });
-        setFilterCol({ col: h.col, x: rr.x + rr.w - 220 < 0 ? rr.x : rr.x + rr.w - 220, y: rr.y + rr.h });
+        const px = rtl ? (rr.x + 220 > size.w ? rr.x + rr.w - 220 : rr.x) : rr.x + rr.w - 220 < 0 ? rr.x : rr.x + rr.w - 220;
+        setFilterCol({ col: h.col, x: Math.max(0, px), y: rr.y + rr.h });
         return true;
       }
     }
@@ -312,7 +379,8 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
       const el = wrap.current!;
       const edge = resizeEdge(h);
       el.style.cursor = edge ? (edge.axis === 'col' ? 'col-resize' : 'row-resize') : h.area === 'colHeader' ? 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2716%27 height=%2716%27%3E%3Cpath d=%27M8 14V2M4 10l4 4 4-4%27 stroke=%27black%27 stroke-width=%272%27 fill=%27none%27/%3E%3C/svg%3E") 8 14, s-resize'
-        : h.area === 'rowHeader' ? 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2716%27 height=%2716%27%3E%3Cpath d=%27M14 8H2M10 4l4 4-4 4%27 stroke=%27black%27 stroke-width=%272%27 fill=%27none%27/%3E%3C/svg%3E") 14 8, e-resize'
+        : h.area === 'rowHeader' ? (rtl ? 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2716%27 height=%2716%27%3E%3Cpath d=%27M2 8H14M6 4l-4 4 4 4%27 stroke=%27black%27 stroke-width=%272%27 fill=%27none%27/%3E%3C/svg%3E") 2 8, w-resize'
+          : 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2716%27 height=%2716%27%3E%3Cpath d=%27M14 8H2M10 4l4 4-4 4%27 stroke=%27black%27 stroke-width=%272%27 fill=%27none%27/%3E%3C/svg%3E") 14 8, e-resize')
           : onFillHandle(h) ? 'crosshair' : onSelBorder(h) ? 'move' : painter.style ? 'copy' : 'cell';
       return;
     }
@@ -325,7 +393,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     if (!ptr) return;
     if (ptr.mode === 'resize' && dragState.resize) {
       const d = dragState.resize;
-      const delta = ((d.axis === 'col' ? h.x : h.y) - d.start) / zoom;
+      const delta = ((d.axis === 'col' ? h.x : h.y) - d.start) / zoom * (d.axis === 'col' && rtl ? -1 : 1);
       setDragState({ resize: { ...d, px: Math.max(0, d.orig + delta) } });
       return;
     }
@@ -354,7 +422,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
 
   const edgeScroll = (cx: number, cy: number) => {
     const rect = wrap.current!.getBoundingClientRect();
-    const dx = cx < rect.left + headerW ? -1 : cx > rect.right - 10 ? 1 : 0;
+    const dx = rtl ? (cx > rect.right - headerW ? 1 : cx < rect.left + 10 ? -1 : 0) : cx < rect.left + headerW ? -1 : cx > rect.right - 10 ? 1 : 0;
     const dy = cy < rect.top + headerH ? -1 : cy > rect.bottom - 10 ? 1 : 0;
     if (!dx && !dy) { if (autoScrollTimer.current) { clearInterval(autoScrollTimer.current); autoScrollTimer.current = null; } return; }
     if (autoScrollTimer.current) return;
@@ -380,7 +448,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
       if (h.area === 'rowHeader') { store.selectRange({ r1: h.row, c1: 0, r2: h.row, c2: MAX_COLS - 1 }); return; }
       const dbl = lastTap.current && Date.now() - lastTap.current.t < 400 && lastTap.current.row === h.row && lastTap.current.col === h.col;
       lastTap.current = { t: Date.now(), row: h.row, col: h.col };
-      if (dbl) { store.beginEdit(); return; }
+      if (dbl) { if (!gridHooks().some((g) => g.cellDoubleTap?.(store, { row: h.row, col: h.col, x: h.x, y: h.y, pointerType: 'touch' }))) store.beginEdit(); return; }
       if (inRange(store.range, h.row, h.col) && store.range.r1 !== store.range.r2 && false) return;
       store.select({ row: h.row, col: h.col });
       if (painter.style) applyPainter(store);
@@ -395,7 +463,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
       const targets = (d.axis === 'col' ? store.sel.ranges.some((r) => r.r1 === 0 && r.r2 === MAX_ROWS - 1 && d.index >= r.c1 && d.index <= r.c2) : store.sel.ranges.some((r) => r.c1 === 0 && r.c2 === MAX_COLS - 1 && d.index >= r.r1 && d.index <= r.r2))
         ? store.sel.ranges.flatMap((r) => { const out: number[] = []; const a = d.axis === 'col' ? [r.c1, r.c2] : [r.r1, r.r2]; for (let i = a[0]!; i <= a[1]! && out.length < 5000; i++) out.push(i); return out; })
         : [d.index];
-      store.change(d.axis === 'col' ? 'Column width' : 'Row height', 'sheet', () => {
+      store.change(d.axis === 'col' ? N('Column width') : N('Row height'), 'sheet', () => {
         for (const i of targets) {
           if (d.axis === 'col') { const info = sheet.cols.get(i) ?? {}; info.width = pxToChars(d.px); info.hidden = d.px === 0 ? true : undefined; sheet.cols.set(i, info); }
           else { const info = sheet.rows.get(i) ?? {}; info.height = pxToPt(d.px); info.hidden = d.px === 0 ? true : undefined; sheet.rows.set(i, info); }
@@ -441,6 +509,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     }
     const link = sheet.hyperlinks.get(cellKey(h.row, h.col));
     if (link && (ev.ctrlKey || ev.metaKey)) { openLink(store, link); return; }
+    if (!store.editing && gridHooks().some((g) => g.cellDoubleTap?.(store, { row: h.row, col: h.col, x: h.x, y: h.y, pointerType: 'mouse' }))) return;
     store.beginEdit();
   };
 
@@ -470,11 +539,11 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     }
     if (store.editing && !store.editing.inBar) {
       // The editor is still opening: treat commit keys the way the editor would.
-      const moves: Record<string, [number, number]> = { Enter: [ev.shiftKey ? -1 : 1, 0], Tab: [0, ev.shiftKey ? -1 : 1], ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+      const moves: Record<string, [number, number]> = { Enter: [ev.shiftKey ? -1 : 1, 0], Tab: [0, ev.shiftKey ? -1 : 1] };
       if (k === 'Escape') { ev.preventDefault(); store.cancelEdit(); return; }
       if (k === 'Backspace') { ev.preventDefault(); store.setEditText(store.editing.text.slice(0, -1)); return; }
-      const m = moves[k];
-      if (m) { ev.preventDefault(); if (store.commitEdit()) store.move(m[0], m[1], k === 'Enter' || k === 'Tab'); return; }
+      const m = moves[k] ?? arrowDelta(k, rtl);
+      if (m) { ev.preventDefault(); if (store.commitEdit()) { if (k === 'Enter') store.moveAfterEnter(ev.shiftKey); else store.move(m[0], m[1], k === 'Tab'); } return; }
     }
     if (handleGridKey(store, ev.nativeEvent, { pageRows: Math.max(1, Math.floor((size.h - headerH) / (20 * zoom)) - 1) })) {
       ev.preventDefault();
@@ -536,7 +605,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
       ev.preventDefault();
       if (mod && ev.shiftKey) { store.commitEdit(false, true); return; }
       if (!store.commitEdit(mod)) return;
-      if (!mod) store.move(ev.shiftKey ? -1 : 1, 0, true);
+      if (!mod) store.moveAfterEnter(ev.shiftKey);
       wrap.current?.focus({ preventScroll: true });
       return;
     }
@@ -552,8 +621,8 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
     if (ed.replace && !ed.text.startsWith('=') && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(ev.key)) {
       ev.preventDefault();
       if (!store.commitEdit()) return;
-      const d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[ev.key]!;
-      store.move(d[0]!, d[1]!);
+      const d = arrowDelta(ev.key, rtl)!;
+      store.move(d[0], d[1]);
       wrap.current?.focus({ preventScroll: true });
       return;
     }
@@ -561,9 +630,9 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
       // Arrow keys point at cells while building a formula.
       ev.preventDefault();
       const ptr = pointer.current ?? { mode: 'pickRef' as const, start: { ...store.sel.active } };
-      const d = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] }[ev.key]!;
+      const d = arrowDelta(ev.key, rtl)!;
       const base = ptr.mode === 'pickRef' && pointer.current ? ptr.start : { row: ed.row, col: ed.col };
-      const next = { row: Math.max(0, base.row + d[0]!), col: Math.max(0, base.col + d[1]!) };
+      const next = { row: Math.max(0, base.row + d[0]), col: Math.max(0, base.col + d[1]) };
       pointer.current = { ...ptr, mode: 'pickRef', start: next };
       insertRefWhileEditing(next);
       return;
@@ -575,55 +644,58 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
   const resizeLine = dragState.resize ? (() => {
     const d = dragState.resize;
     const panes = panesOf(vp);
-    if (d.axis === 'col') { const p = paneFor(panes, vp, 0, d.index); const r = rectIn(p, vp, { r1: 0, c1: d.index, r2: 0, c2: d.index }); return { left: r.x + d.px * zoom, top: 0, width: 1, height: size.h, label: `Width: ${pxToChars(d.px)} (${Math.round(d.px)} pixels)` }; }
+    if (d.axis === 'col') { const p = paneFor(panes, vp, 0, d.index); const r = rectIn(p, vp, { r1: 0, c1: d.index, r2: 0, c2: d.index }); return { left: rtl ? r.x + r.w - d.px * zoom : r.x + d.px * zoom, top: 0, width: 1, height: size.h, label: `Width: ${pxToChars(d.px)} (${Math.round(d.px)} pixels)` }; }
     const p = paneFor(panes, vp, d.index, 0); const r = rectIn(p, vp, { r1: d.index, c1: 0, r2: d.index, c2: 0 });
     return { left: 0, top: r.y + d.px * zoom, width: size.w, height: 1, label: `Height: ${pxToPt(d.px)} (${Math.round(d.px)} pixels)` };
   })() : null;
 
   return (
-    <div className="gridwrap" ref={wrap} tabIndex={0} role="grid" aria-label={`${sheet.name} worksheet`} aria-rowcount={MAX_ROWS} aria-colcount={MAX_COLS}
+    <div className="gridwrap" ref={wrap} tabIndex={0} role="grid" aria-label={T('{name} worksheet', { name: sheet.name })} aria-rowcount={MAX_ROWS} aria-colcount={MAX_COLS}
       onKeyDown={onKeyDown} onBeforeInput={onBeforeInput}>
-      <div className="scroller" ref={scroller} onScroll={onScroll}
+      <div className="scroller" ref={scroller} onScroll={onScroll} dir={rtl ? 'rtl' : 'ltr'}
         onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={() => { pointer.current = null; touchStart.current = null; setDragState({}); }}
         onPointerLeave={(ev) => { if (ev.pointerType !== 'touch') for (const g of gridHooks()) g.hover?.(store, null); }}
         onDoubleClick={onDoubleClick} onContextMenu={onContextMenu}
-        onWheel={(ev) => { if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); run(store, ev.deltaY < 0 ? 'view.zoomIn' : 'view.zoomOut'); } }}>
+        onWheel={(ev) => {
+          if (ev.ctrlKey || ev.metaKey) { ev.preventDefault(); run(store, ev.deltaY < 0 ? 'view.zoomIn' : 'view.zoomOut'); return; }
+        }}>
         <div className="spacer" style={{ width: spacerW, height: spacerH }}>
           <canvas ref={canvas} className="sheetcanvas" style={{ width: size.w, height: size.h }} />
         </div>
       </div>
       <ChartLayer store={store} vp={vp} />
+      {activeStageView(store)?.render(store)}
       {dv && !e && (
-        <button className="dvarrow" style={{ left: activeRect.x + activeRect.w + 1, top: activeRect.y + activeRect.h - 18 * zoom, height: 18 * zoom, width: 18 * zoom }}
-          aria-label="Choose from the list" onPointerDown={(ev) => ev.stopPropagation()} onClick={() => setList(list ? null : { row: active.row, col: active.col, options: listOptions(store, dv, active.row, active.col) })}>
+        <button className="dvarrow" style={{ left: rtl ? activeRect.x - 18 * zoom - 1 : activeRect.x + activeRect.w + 1, top: activeRect.y + activeRect.h - 18 * zoom, height: 18 * zoom, width: 18 * zoom }}
+          aria-label={T('Choose from the list')} onPointerDown={(ev) => ev.stopPropagation()} onClick={() => setList(list ? null : { row: active.row, col: active.col, options: listOptions(store, dv, active.row, active.col) })}>
           <svg viewBox="0 0 10 10" width="10" height="10"><path d="M2 3.5 5 6.5 8 3.5" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" /></svg>
         </button>
       )}
       {list && (
-        <div className="dvlist" role="listbox" style={{ left: activeRect.x, top: activeRect.y + activeRect.h + 2, minWidth: activeRect.w }}>
+        <div className="dvlist" role="listbox" style={{ ...(rtl ? { right: size.w - activeRect.x - activeRect.w } : { left: activeRect.x }), top: activeRect.y + activeRect.h + 2, minWidth: activeRect.w }}>
           {list.options.map((o) => (
-            <button key={o} role="option" aria-selected={false} onClick={() => { store.change('Choose', [{ area: { r1: list.row, c1: list.col, r2: list.row, c2: list.col } }], () => store.enter(list.row, list.col, o)); setList(null); wrap.current?.focus(); }}>{o}</button>
+            <button key={o} role="option" aria-selected={false} onClick={() => { store.change(N('Choose'), [{ area: { r1: list.row, c1: list.col, r2: list.row, c2: list.col } }], () => store.enter(list.row, list.col, o)); setList(null); wrap.current?.focus(); }}>{o}</button>
           ))}
-          {!list.options.length && <div className="muted">No choices</div>}
+          {!list.options.length && <div className="muted">{T('No choices')}</div>}
         </div>
       )}
       {e && !e.inBar && editRect && editStyle && (
         <>
-          <textarea ref={editor} className="celleditor" spellCheck={false} value={e.text} aria-label="Cell editor"
+          <textarea ref={editor} className="celleditor" spellCheck={false} value={e.text} aria-label={T('Cell editor')} dir="auto"
             style={{
-              left: editRect.x, top: editRect.y, minWidth: editRect.w, minHeight: editRect.h,
+              ...(rtl ? { right: size.w - editRect.x - editRect.w } : { left: editRect.x }), top: editRect.y, minWidth: editRect.w, minHeight: editRect.h,
               font: cssFont(editStyle, zoom), color: editStyle.font?.color ?? undefined, background: editStyle.fill?.color ?? undefined,
-              textAlign: editStyle.align?.h === 'center' ? 'center' : editStyle.align?.h === 'right' ? 'right' : 'left',
-              width: Math.min(size.w - editRect.x - 4, Math.max(editRect.w, measureWidth(e.text, cssFont(editStyle, zoom)) + 14)),
+              textAlign: editStyle.align?.h === 'center' ? 'center' : editStyle.align?.h === 'right' ? 'right' : editStyle.align?.h === 'left' ? 'left' : 'start',
+              width: Math.min(rtl ? editRect.x + editRect.w - 4 : size.w - editRect.x - 4, Math.max(editRect.w, measureWidth(e.text, cssFont(editStyle, zoom)) + 14)),
               height: Math.max(editRect.h, (e.text.split('\n').length) * (((editStyle.font?.size ?? 11) * 4) / 3) * zoom * 1.25 + 6),
               whiteSpace: editStyle.align?.wrap ? 'pre-wrap' : 'pre',
             }}
             onChange={(ev) => store.setEditText(ev.target.value)} onKeyDown={onEditorKey}
             onBlur={(ev) => { if (ev.relatedTarget && (ev.relatedTarget as Element).closest?.('.formulabar,.assist,.dialog,.panel,.toolpanel,.topbar')) return; }} />
-          <FormulaAssist store={store} anchor={{ x: editRect.x, y: editRect.y + Math.max(editRect.h, 22) + 2 }} input={editor} keyRef={assistKey} />
+          <FormulaAssist store={store} anchor={{ x: rtl ? Math.max(0, editRect.x + editRect.w - 320) : editRect.x, y: editRect.y + Math.max(editRect.h, 22) + 2 }} input={editor} keyRef={assistKey} />
         </>
       )}
-      {resizeLine && <><div className="resizeline" style={resizeLine} /><div className="resizetip" style={{ left: Math.min(resizeLine.left + 8, size.w - 200), top: Math.min(resizeLine.top + 8, size.h - 30) }}>{resizeLine.label}</div></>}
+      {resizeLine && <><div className="resizeline" style={resizeLine} /><div className="resizetip" style={{ left: Math.min(resizeLine.left + 8, size.w - 200), top: Math.min(resizeLine.top + 8, size.h - 30) }}>{Tr(resizeLine.label)}</div></>}
       {filterCol && (
         <FilterPopupHost store={store} col={filterCol.col} x={filterCol.x} y={filterCol.y} onClose={() => { setFilterCol(null); wrap.current?.focus(); }} />
       )}
@@ -632,6 +704,7 @@ export const GridView = ({ store, apiRef }: { store: GridStore; apiRef?: React.M
 };
 
 import { FilterPopup } from './FilterPopup';
+import { N, T, Tr } from './i18n';
 const FilterPopupHost = (p: { store: GridStore; col: number; x: number; y: number; onClose: () => void }) => <FilterPopup {...p} />;
 
 let measureCtx: CanvasRenderingContext2D | null = null;

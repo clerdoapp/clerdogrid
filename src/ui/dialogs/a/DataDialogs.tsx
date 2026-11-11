@@ -9,6 +9,7 @@ import { refString } from '../../charts/chartData';
 import '../../charts/charts.css';
 import { Dialog, Field, type DialogProps } from '../Dialog';
 import { addSheetAtEnd, BOLD, clipToUsed, headerNames, put, rangeText, resolveRange, setColWidth } from './util';
+import { N, T, Tr } from '../../i18n';
 
 const regionOrSelection = (store: GridStore): CellRange => {
   const r = store.range;
@@ -20,8 +21,8 @@ const sameKey = (a: Scalar, b: Scalar): boolean => (typeof a === 'string' && typ
 // ---------- Subtotals ----------
 
 const SUBTOTAL_FNS: { code: number; label: string }[] = [
-  { code: 9, label: 'Sum' }, { code: 3, label: 'Count' }, { code: 1, label: 'Average' }, { code: 4, label: 'Max' }, { code: 5, label: 'Min' },
-  { code: 6, label: 'Product' }, { code: 2, label: 'Count numbers' }, { code: 7, label: 'Standard deviation' }, { code: 10, label: 'Variance' },
+  { code: 9, label: N('Sum') }, { code: 3, label: N('Count') }, { code: 1, label: N('Average') }, { code: 4, label: N('Max') }, { code: 5, label: N('Min') },
+  { code: 6, label: N('Product') }, { code: 2, label: N('Count numbers') }, { code: 7, label: N('Standard deviation') }, { code: 10, label: N('Variance') },
 ];
 
 /** Rows in the block that hold a SUBTOTAL formula. */
@@ -54,10 +55,10 @@ export const SubtotalsDialog = ({ store, close }: DialogProps) => {
   const existing = useMemo(() => subtotalRows(store, range).length, [store, range]);
 
   const ok = (): boolean => {
-    if (range.r2 - range.r1 < 1) { store.notify('Select a list with a header row and some data.'); return false; }
-    if (!cols.length) { store.notify('Pick at least one column to add a subtotal to.'); return false; }
+    if (range.r2 - range.r1 < 1) { store.notify(T('Select a list with a header row and some data.')); return false; }
+    if (!cols.length) { store.notify(T('Pick at least one column to add a subtotal to.')); return false; }
     const label = SUBTOTAL_FNS.find((f) => f.code === fn)!.label;
-    store.change('Subtotal', 'book', () => {
+    store.change(N('Subtotal'), 'book', () => {
       let r = { ...range };
       if (replace && existing) r = { ...r, r2: r.r2 - removeSubtotals(store, r) };
       applySubtotals(store, r, header, by, fn, cols, label);
@@ -66,19 +67,19 @@ export const SubtotalsDialog = ({ store, close }: DialogProps) => {
   };
 
   return (
-    <Dialog title="Subtotal" close={close} width={420} onOk={ok} footer={existing ? <button onClick={() => { store.change('Remove subtotals', 'book', () => removeSubtotals(store, range)); close(); }}>Remove all</button> : undefined}>
-      <p className="muted small">List: {rangeAddr(range)}. Sort it by the grouping column first.</p>
-      <Field label="At each change in">
+    <Dialog title={T('Subtotal')} close={close} width={420} onOk={ok} footer={existing ? <button onClick={() => { store.change(N('Remove subtotals'), 'book', () => removeSubtotals(store, range)); close(); }}>{T('Remove all')}</button> : undefined}>
+      <p className="muted small">{T('List: {range}. Sort it by the grouping column first.', { range: rangeAddr(range) })}</p>
+      <Field label={T('At each change in')}>
         <select value={by} onChange={(e) => setBy(+e.target.value)}>{names.map((n, i) => <option key={i} value={i}>{n}</option>)}</select>
       </Field>
-      <Field label="Use function">
-        <select value={fn} onChange={(e) => setFn(+e.target.value)}>{SUBTOTAL_FNS.map((f) => <option key={f.code} value={f.code}>{f.label}</option>)}</select>
+      <Field label={T('Use function')}>
+        <select value={fn} onChange={(e) => setFn(+e.target.value)}>{SUBTOTAL_FNS.map((f) => <option key={f.code} value={f.code}>{Tr(f.label)}</option>)}</select>
       </Field>
-      <div className="seclabel">Add subtotal to</div>
+      <div className="seclabel">{T('Add subtotal to')}</div>
       <div className="checks">
         {names.map((n, i) => <label key={i}><input type="checkbox" checked={cols.includes(i)} onChange={(e) => setCols(e.target.checked ? [...cols, i].sort((a, b) => a - b) : cols.filter((c) => c !== i))} /> {n}</label>)}
       </div>
-      {existing > 0 && <label className="checkrow"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} /> Replace current subtotals</label>}
+      {existing > 0 && <label className="checkrow"><input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />{' '}{T('Replace current subtotals')}</label>}
     </Dialog>
   );
 };
@@ -150,25 +151,25 @@ export const DataTableDialog = ({ store, close }: DialogProps) => {
 
   const ok = (): boolean => {
     const ri = cellOf(rowIn), ci = cellOf(colIn);
-    if ((rowIn.trim() && !ri) || (colIn.trim() && !ci)) { store.notify('Enter input cells as cell addresses, such as B3.'); return false; }
-    if (!ri && !ci) { store.notify('Enter a row input cell, a column input cell, or both.'); return false; }
-    if (r.r2 - r.r1 < 1 || r.c2 - r.c1 < 1) { store.notify('Select the whole table first: input values along the edge and formulas in the first row or column.'); return false; }
+    if ((rowIn.trim() && !ri) || (colIn.trim() && !ci)) { store.notify(T('Enter input cells as cell addresses, such as B3.')); return false; }
+    if (!ri && !ci) { store.notify(T('Enter a row input cell, a column input cell, or both.')); return false; }
+    if (r.r2 - r.r1 < 1 || r.c2 - r.c1 < 1) { store.notify(T('Select the whole table first: input values along the edge and formulas in the first row or column.')); return false; }
     const body: CellRange = { r1: r.r1 + 1, c1: r.c1 + 1, r2: r.r2, c2: r.c2 };
-    if ((body.r2 - body.r1 + 1) * (body.c2 - body.c1 + 1) > 20000) { store.notify('That table is too big. Use 20,000 result cells or fewer.'); return false; }
-    for (const p of [ri, ci]) if (p && p.row >= r.r1 && p.row <= r.r2 && p.col >= r.c1 && p.col <= r.c2) { store.notify('The input cell must be outside the table.'); return false; }
+    if ((body.r2 - body.r1 + 1) * (body.c2 - body.c1 + 1) > 20000) { store.notify(T('That table is too big. Use 20,000 result cells or fewer.')); return false; }
+    for (const p of [ri, ci]) if (p && p.row >= r.r1 && p.row <= r.r2 && p.col >= r.c1 && p.col <= r.c2) { store.notify(T('The input cell must be outside the table.')); return false; }
     const results = computeTable(store, r, ri, ci);
     if (!results) return false;
-    store.change('Data table', [{ area: body }], () => {
+    store.change(N('Data table'), [{ area: body }], () => {
       results.forEach((line, i) => line.forEach((v, j) => store.engine.setValue(store.sheetIndex, body.r1 + i, body.c1 + j, v)));
     });
     return true;
   };
 
   return (
-    <Dialog title="Data table" close={close} width={380} onOk={ok}>
-      <p className="muted small">Table: {rangeAddr(r)}. Put input values along the top row and/or left column, and the formula in the top-left cell (two inputs), the top row (column input) or the left column (row input).</p>
-      <Field label="Row input cell"><input value={rowIn} onChange={(e) => setRowIn(e.target.value)} placeholder="Values in the top row replace this cell" spellCheck={false} /></Field>
-      <Field label="Column input cell"><input value={colIn} onChange={(e) => setColIn(e.target.value)} placeholder="Values in the left column replace this cell" spellCheck={false} /></Field>
+    <Dialog title={T('Data table')} close={close} width={380} onOk={ok}>
+      <p className="muted small">{T('Table: {range}. Put input values along the top row and/or left column, and the formula in the top-left cell (two inputs), the top row (column input) or the left column (row input).', { range: rangeAddr(r) })}</p>
+      <Field label={T('Row input cell')}><input value={rowIn} onChange={(e) => setRowIn(e.target.value)} placeholder={T('Values in the top row replace this cell')} spellCheck={false} /></Field>
+      <Field label={T('Column input cell')}><input value={colIn} onChange={(e) => setColIn(e.target.value)} placeholder={T('Values in the left column replace this cell')} spellCheck={false} /></Field>
     </Dialog>
   );
 };
@@ -178,14 +179,14 @@ const computeTable = (store: GridStore, r: CellRange, ri: { row: number; col: nu
   const sheet = store.sheetIndex;
   const inputs = [ri, ci].filter((p): p is { row: number; col: number } => !!p);
   const saved = inputs.map((p) => ({ p, cell: structuredClone(store.cell(p.row, p.col)) }));
-  if (saved.some((s) => s.cell?.f)) { store.notify('An input cell must hold a value, not a formula.'); return null; }
+  if (saved.some((s) => s.cell?.f)) { store.notify(T('An input cell must hold a value, not a formula.')); return null; }
   const formulaAt = (row: number, col: number) => !!store.cell(row, col)?.f;
   const set = (p: { row: number; col: number }, v: Scalar) => store.engine.setValue(sheet, p.row, p.col, v);
   const read = (row: number, col: number): Scalar => { const v = store.value(row, col); return isMatrix(v as never) ? null : v; };
   const out: Scalar[][] = [];
   try {
     if (ri && ci) {
-      if (!formulaAt(r.r1, r.c1)) { store.notify('Put the formula in the top-left cell of the table.'); return null; }
+      if (!formulaAt(r.r1, r.c1)) { store.notify(T('Put the formula in the top-left cell of the table.')); return null; }
       for (let row = r.r1 + 1; row <= r.r2; row++) {
         const line: Scalar[] = [];
         for (let col = r.c1 + 1; col <= r.c2; col++) { set(ri, store.value(r.r1, col)); set(ci, store.value(row, r.c1)); store.engine.recalc(); line.push(read(r.r1, r.c1)); }
@@ -193,11 +194,11 @@ const computeTable = (store: GridStore, r: CellRange, ri: { row: number; col: nu
       }
     } else if (ci) {
       const fcols = Array.from({ length: r.c2 - r.c1 }, (_, j) => r.c1 + 1 + j);
-      if (!fcols.some((c) => formulaAt(r.r1, c))) { store.notify('Put the formulas in the top row of the table.'); return null; }
+      if (!fcols.some((c) => formulaAt(r.r1, c))) { store.notify(T('Put the formulas in the top row of the table.')); return null; }
       for (let row = r.r1 + 1; row <= r.r2; row++) { set(ci, store.value(row, r.c1)); store.engine.recalc(); out.push(fcols.map((c) => (formulaAt(r.r1, c) ? read(r.r1, c) : null))); }
     } else if (ri) {
       const frows = Array.from({ length: r.r2 - r.r1 }, (_, i) => r.r1 + 1 + i);
-      if (!frows.some((rr) => formulaAt(rr, r.c1))) { store.notify('Put the formulas in the left column of the table.'); return null; }
+      if (!frows.some((rr) => formulaAt(rr, r.c1))) { store.notify(T('Put the formulas in the left column of the table.')); return null; }
       const cols: Scalar[][] = [];
       for (let col = r.c1 + 1; col <= r.c2; col++) { set(ri, store.value(r.r1, col)); store.engine.recalc(); cols.push(frows.map((rr) => (formulaAt(rr, r.c1) ? read(rr, r.c1) : null))); }
       frows.forEach((_, i) => out.push(cols.map((c) => c[i]!)));
@@ -215,19 +216,19 @@ const computeTable = (store: GridStore, r: CellRange, ri: { row: number; col: nu
 // ---------- Descriptive statistics ----------
 
 const STATS: [string, (r: string) => string][] = [
-  ['Mean', (r) => `AVERAGE(${r})`],
-  ['Standard error', (r) => `STDEV.S(${r})/SQRT(COUNT(${r}))`],
-  ['Median', (r) => `MEDIAN(${r})`],
-  ['Mode', (r) => `IFERROR(MODE.SNGL(${r}),"None")`],
-  ['Standard deviation', (r) => `STDEV.S(${r})`],
-  ['Variance', (r) => `VAR.S(${r})`],
-  ['Kurtosis', (r) => `KURT(${r})`],
-  ['Skewness', (r) => `SKEW(${r})`],
-  ['Range', (r) => `MAX(${r})-MIN(${r})`],
-  ['Minimum', (r) => `MIN(${r})`],
-  ['Maximum', (r) => `MAX(${r})`],
-  ['Sum', (r) => `SUM(${r})`],
-  ['Count', (r) => `COUNT(${r})`],
+  [N('Mean'), (r) => `AVERAGE(${r})`],
+  [N('Standard error'), (r) => `STDEV.S(${r})/SQRT(COUNT(${r}))`],
+  [N('Median'), (r) => `MEDIAN(${r})`],
+  [N('Mode'), (r) => `IFERROR(MODE.SNGL(${r}),"None")`],
+  [N('Standard deviation'), (r) => `STDEV.S(${r})`],
+  [N('Variance'), (r) => `VAR.S(${r})`],
+  [N('Kurtosis'), (r) => `KURT(${r})`],
+  [N('Skewness'), (r) => `SKEW(${r})`],
+  [N('Range'), (r) => `MAX(${r})-MIN(${r})`],
+  [N('Minimum'), (r) => `MIN(${r})`],
+  [N('Maximum'), (r) => `MAX(${r})`],
+  [N('Sum'), (r) => `SUM(${r})`],
+  [N('Count'), (r) => `COUNT(${r})`],
 ];
 
 export const StatsDialog = ({ store, close }: DialogProps) => {
@@ -245,11 +246,11 @@ export const StatsDialog = ({ store, close }: DialogProps) => {
   const cols = (picked ?? numeric).filter((i) => i < names.length);
 
   const ok = (): boolean => {
-    if (!src) { store.notify('Enter an input range such as B1:D20.'); return false; }
-    if (!cols.length) { store.notify('Pick at least one column with numbers.'); return false; }
+    if (!src) { store.notify(T('Enter an input range such as B1:D20.')); return false; }
+    if (!cols.length) { store.notify(T('Pick at least one column with numbers.')); return false; }
     const first = src.range.r1 + (hdr ? 1 : 0);
-    if (first > src.range.r2) { store.notify('The input range has no data rows.'); return false; }
-    store.change('Descriptive statistics', 'book', () => {
+    if (first > src.range.r2) { store.notify(T('The input range has no data rows.')); return false; }
+    store.change(N('Descriptive statistics'), 'book', () => {
       const sheet = addSheetAtEnd(store, 'Statistics');
       put(store, sheet, 0, 0, 'Statistic', BOLD);
       STATS.forEach(([label], i) => put(store, sheet, i + 1, 0, label));
@@ -267,15 +268,15 @@ export const StatsDialog = ({ store, close }: DialogProps) => {
   };
 
   return (
-    <Dialog title="Descriptive statistics" close={close} width={420} onOk={ok}>
-      <Field label="Input range"><input value={srcText} onChange={(e) => { setSrcText(e.target.value); setPicked(null); }} aria-invalid={!src} spellCheck={false} /></Field>
-      <label className="checkrow"><input type="checkbox" checked={hdr} onChange={(e) => setUseHeader(e.target.checked)} /> First row has labels</label>
-      <div className="seclabel">Columns</div>
+    <Dialog title={T('Descriptive statistics')} close={close} width={420} onOk={ok}>
+      <Field label={T('Input range')}><input value={srcText} onChange={(e) => { setSrcText(e.target.value); setPicked(null); }} aria-invalid={!src} spellCheck={false} /></Field>
+      <label className="checkrow"><input type="checkbox" checked={hdr} onChange={(e) => setUseHeader(e.target.checked)} />{' '}{T('First row has labels')}</label>
+      <div className="seclabel">{T('Columns')}</div>
       <div className="checks">
         {names.map((n, i) => <label key={i}><input type="checkbox" checked={cols.includes(i)} onChange={(e) => setPicked(e.target.checked ? [...cols, i].sort((a, b) => a - b) : cols.filter((c) => c !== i))} /> {n}</label>)}
-        {!names.length && <span className="muted">Enter a valid range.</span>}
+        {!names.length && <span className="muted">{T('Enter a valid range.')}</span>}
       </div>
-      <p className="muted small">Results go on a new sheet as formulas, so they update when the data changes.</p>
+      <p className="muted small">{T('Results go on a new sheet as formulas, so they update when the data changes.')}</p>
     </Dialog>
   );
 };

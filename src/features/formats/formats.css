@@ -1,0 +1,22 @@
+.fmt-import { gap: 12px; }
+.fmt-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; }
+.fmt-row > .field { min-width: 150px; flex: 1; }
+.fmt-row .field input[type='number'] { width: 90px; }
+.fmt-preview { border: 1px solid var(--line); border-radius: 8px; overflow: auto; max-height: 260px; background: var(--panel); }
+.fmt-preview table { border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
+.fmt-preview th { position: sticky; top: 0; background: var(--panel-2); padding: 3px; border-bottom: 1px solid var(--line); }
+.fmt-preview th select { font-size: 12px; height: 26px; max-width: 130px; }
+.fmt-preview td { padding: 2px 8px; border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); white-space: pre; max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.fmt-preview td.fmt-skip { color: var(--muted); text-decoration: line-through; background: var(--panel-2); }
+.fmt-fixed { position: relative; border: 1px solid var(--line); border-radius: 8px; overflow: auto; max-height: 220px; background: var(--panel); cursor: crosshair; font-family: 'Cousine', 'Roboto Mono', ui-monospace, monospace; font-size: 12px; }
+.fmt-fixed pre { margin: 0; padding: 4px 6px; font: inherit; line-height: 18px; min-width: max-content; }
+.fmt-ruler { position: sticky; top: 0; height: 18px; background: var(--panel-2); border-bottom: 1px solid var(--line); min-width: 100%; }
+.fmt-ruler span { position: absolute; top: 1px; font-size: 10px; color: var(--muted); }
+.fmt-ruler .fmt-ch { visibility: hidden; left: 0; font-size: 12px; }
+.fmt-break { position: absolute; top: 0; bottom: 0; width: 0; border-left: 2px solid var(--accent); cursor: pointer; }
+.fmt-break::before { content: ''; position: absolute; inset: 0 -5px; }
+.fmt-error { color: var(--danger, #c62828); font-size: 13px; margin: 0; }
+.fmt-queries { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.fmt-query { display: flex; align-items: center; gap: 4px; padding: 4px 6px; border-radius: 8px; background: var(--panel-2); }
+.fmt-qtext { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 13px; }
+.fmt-qtext span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

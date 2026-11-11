@@ -3,19 +3,20 @@ import { formatValue, isDateFormat } from '../../formats/numfmt';
 import type { Scalar } from '../../engine/types';
 import { Field } from './Dialog';
 import { Check } from './shared';
+import { N, T, Tr } from '../i18n';
 
 export type NumCategory = 'general' | 'number' | 'currency' | 'accounting' | 'date' | 'time' | 'percent' | 'fraction' | 'scientific' | 'text' | 'special' | 'custom';
 
 export const CATEGORIES: [NumCategory, string][] = [
-  ['general', 'General'], ['number', 'Number'], ['currency', 'Currency'], ['accounting', 'Accounting'], ['date', 'Date'], ['time', 'Time'],
-  ['percent', 'Percentage'], ['fraction', 'Fraction'], ['scientific', 'Scientific'], ['text', 'Text'], ['special', 'Special'], ['custom', 'Custom'],
+  ['general', N('General')], ['number', N('Number')], ['currency', N('Currency')], ['accounting', N('Accounting')], ['date', N('Date')], ['time', N('Time')],
+  ['percent', N('Percentage')], ['fraction', N('Fraction')], ['scientific', N('Scientific')], ['text', N('Text')], ['special', N('Special')], ['custom', N('Custom')],
 ];
 
-const SYMBOLS: [string, string][] = [['', 'None'], ['$', '$'], ['€', '€'], ['£', '£'], ['¥', '¥'], ['₹', '₹'], ['CHF', 'CHF'], ['SAR', 'SAR'], ['AED', 'AED']];
+const SYMBOLS: [string, string][] = [['', N('None')], ['$', '$'], ['€', '€'], ['£', '£'], ['¥', '¥'], ['₹', '₹'], ['CHF', 'CHF'], ['SAR', 'SAR'], ['AED', 'AED']];
 export const DATE_FORMATS = ['m/d/yyyy', 'd/m/yyyy', 'yyyy-mm-dd', 'm/d/yy', 'd-mmm-yy', 'd-mmm', 'mmm-yy', 'mmmm d, yyyy', 'dddd, mmmm d, yyyy', 'd mmmm yyyy', 'mmmm yyyy', 'm/d/yyyy h:mm', 'yyyy-mm-dd hh:mm:ss'];
 export const TIME_FORMATS = ['h:mm', 'h:mm AM/PM', 'h:mm:ss', 'h:mm:ss AM/PM', 'hh:mm:ss', 'mm:ss', 'mm:ss.0', '[h]:mm:ss', 'm/d/yyyy h:mm AM/PM'];
-const FRACTIONS: [string, string][] = [['# ?/?', 'Up to one digit'], ['# ??/??', 'Up to two digits'], ['# ???/???', 'Up to three digits'], ['# ?/2', 'Halves'], ['# ?/4', 'Quarters'], ['# ?/8', 'Eighths'], ['# ??/16', 'Sixteenths'], ['# ?/10', 'Tenths'], ['# ??/100', 'Hundredths']];
-const SPECIAL: [string, string][] = [['00000', 'Postal code (5 digits)'], ['00000-0000', 'Postal code + 4'], ['[<=9999999]###-####;(###) ###-####', 'Phone number'], ['000-00-0000', 'ID number (3-2-4)'], ['0000 0000 0000 0000', 'Groups of four']];
+const FRACTIONS: [string, string][] = [['# ?/?', N('Up to one digit')], ['# ??/??', N('Up to two digits')], ['# ???/???', N('Up to three digits')], ['# ?/2', N('Halves')], ['# ?/4', N('Quarters')], ['# ?/8', N('Eighths')], ['# ??/16', N('Sixteenths')], ['# ?/10', N('Tenths')], ['# ??/100', N('Hundredths')]];
+const SPECIAL: [string, string][] = [['00000', N('Postal code (5 digits)')], ['00000-0000', N('Postal code + 4')], ['[<=9999999]###-####;(###) ###-####', N('Phone number')], ['000-00-0000', N('ID number (3-2-4)')], ['0000 0000 0000 0000', N('Groups of four')]];
 const CUSTOM_STARTERS = ['General', '0', '0.00', '#,##0', '#,##0.00', '#,##0;[Red]-#,##0', '0%', '0.00%', '0.00E+00', '# ?/?', 'm/d/yyyy', 'd-mmm-yy', 'h:mm AM/PM', '[h]:mm:ss', '@', '"Total: "0', '[Blue]#,##0;[Red]-#,##0;0', '0.0,,"M"', '#,##0.00 "kg"'];
 
 export interface NumOpts { cat: NumCategory; dec: number; thousands: boolean; neg: number; symbol: string; pattern: string; custom: string }
@@ -73,25 +74,25 @@ export const parseCode = (code: string): NumOpts => {
 export const NumberTab = ({ o, set, sample, date1904, formats }: { o: NumOpts; set: (p: Partial<NumOpts>) => void; sample: Scalar; date1904: boolean; formats: string[] }) => {
   const code = buildCode(o);
   const shown = useMemo(() => {
-    try { return formatValue(sample ?? 1234.5, code, { date1904 }); } catch { return { text: 'This format code has a problem.', color: undefined }; }
+    try { return formatValue(sample ?? 1234.5, code, { date1904 }); } catch { return { text: N('This format code has a problem.'), color: undefined }; }
   }, [sample, code, date1904]);
   const negSamples = ['-1,234.10', '1,234.10', '(1,234.10)', '(1,234.10)'];
   const pick = (list: [string, string][]) => (
     <div className="b-list" role="listbox">
       {list.map(([c, label]) => <button key={c} role="option" aria-selected={o.pattern === c} className={o.pattern === c ? 'on' : ''} onClick={() => set({ pattern: c })}>
-        <span>{label}</span><span className="muted small">{formatValue(typeof sample === 'number' ? sample : 45678.5625, c, { date1904 }).text}</span></button>)}
+        <span>{Tr(label)}</span><span className="muted small">{Tr(formatValue(typeof sample === 'number' ? sample : 45678.5625, c, { date1904 }).text)}</span></button>)}
     </div>
   );
-  const decimals = <Field label="Decimal places"><input type="number" min={0} max={30} value={o.dec} onChange={(e) => set({ dec: Math.max(0, Math.min(30, Math.trunc(+e.target.value || 0))) })} /></Field>;
-  const symbol = <Field label="Symbol"><select value={o.symbol} onChange={(e) => set({ symbol: e.target.value })}>{SYMBOLS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>;
+  const decimals = <Field label={T('Decimal places')}><input type="number" min={0} max={30} value={o.dec} onChange={(e) => set({ dec: Math.max(0, Math.min(30, Math.trunc(+e.target.value || 0))) })} /></Field>;
+  const symbol = <Field label={T('Symbol')}><select value={o.symbol} onChange={(e) => set({ symbol: e.target.value })}>{SYMBOLS.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select></Field>;
   const negatives = (
-    <Field label="Negative numbers">
+    <Field label={T('Negative numbers')}>
       <div className="b-list" role="listbox">{negSamples.map((t, i) => <button key={i} className={o.neg === i ? 'on' : ''} aria-selected={o.neg === i} role="option" onClick={() => set({ neg: i })} style={{ color: i % 2 ? '#d92d20' : undefined }}>{t}</button>)}</div>
     </Field>
   );
   return (
     <div className="b-split">
-      <div className="b-list b-cats" role="listbox" aria-label="Category">
+      <div className="b-list b-cats" role="listbox" aria-label={T('Category')}>
         {CATEGORIES.map(([c, l]) => <button key={c} role="option" aria-selected={o.cat === c} className={o.cat === c ? 'on' : ''} onClick={() => {
           const p: Partial<NumOpts> = { cat: c };
           if (c === 'date' && !DATE_FORMATS.includes(o.pattern)) p.pattern = DATE_FORMATS[0];
@@ -100,25 +101,25 @@ export const NumberTab = ({ o, set, sample, date1904, formats }: { o: NumOpts; s
           if (c === 'special' && !SPECIAL.some(([x]) => x === o.pattern)) p.pattern = SPECIAL[0]![0];
           if (c === 'custom') p.custom = code;
           set(p);
-        }}>{l}</button>)}
+        }}>{Tr(l)}</button>)}
       </div>
       <div className="b-col">
-        <Field label="Sample"><div className="preview b-sample" style={{ color: shown.color }}>{shown.text || ' '}</div></Field>
-        {o.cat === 'general' && <p className="muted small">No special format. Numbers show as typed, up to 11 digits.</p>}
-        {o.cat === 'number' && <>{decimals}<Check label="Use thousands separator" checked={o.thousands} onChange={(v) => set({ thousands: v })} />{negatives}</>}
+        <Field label={T('Sample')}><div className="preview b-sample" style={{ color: shown.color }}>{shown.text || ' '}</div></Field>
+        {o.cat === 'general' && <p className="muted small">{T('No special format. Numbers show as typed, up to 11 digits.')}</p>}
+        {o.cat === 'number' && <>{decimals}<Check label={T('Use thousands separator')} checked={o.thousands} onChange={(v) => set({ thousands: v })} />{negatives}</>}
         {o.cat === 'currency' && <><div className="grid2">{decimals}{symbol}</div>{negatives}</>}
-        {o.cat === 'accounting' && <><div className="grid2">{decimals}{symbol}</div><p className="muted small">Lines up symbols and decimal points in a column.</p></>}
-        {o.cat === 'percent' && <>{decimals}<p className="muted small">Multiplies by 100 and adds a percent sign.</p></>}
+        {o.cat === 'accounting' && <><div className="grid2">{decimals}{symbol}</div><p className="muted small">{T('Lines up symbols and decimal points in a column.')}</p></>}
+        {o.cat === 'percent' && <>{decimals}<p className="muted small">{T('Multiplies by 100 and adds a percent sign.')}</p></>}
         {o.cat === 'scientific' && decimals}
-        {o.cat === 'text' && <p className="muted small">Shows exactly what you type, even numbers.</p>}
+        {o.cat === 'text' && <p className="muted small">{T('Shows exactly what you type, even numbers.')}</p>}
         {o.cat === 'date' && pick(DATE_FORMATS.map((d) => [d, d]))}
         {o.cat === 'time' && pick(TIME_FORMATS.map((d) => [d, d]))}
         {o.cat === 'fraction' && pick(FRACTIONS)}
         {o.cat === 'special' && pick(SPECIAL)}
         {o.cat === 'custom' && <>
-          <Field label="Format code"><input className="mono" value={o.custom} spellCheck={false} onChange={(e) => set({ custom: e.target.value })} /></Field>
+          <Field label={T('Format code')}><input className="mono" value={o.custom} spellCheck={false} onChange={(e) => set({ custom: e.target.value })} /></Field>
           <div className="b-list b-short" role="listbox">{[...new Set([...formats, ...CUSTOM_STARTERS])].map((c) => <button key={c} className={`mono${o.custom === c ? ' on' : ''}`} onClick={() => set({ custom: c })}>{c}</button>)}</div>
-          <p className="muted small">Up to four parts separated by semicolons: positive; negative; zero; text.</p>
+          <p className="muted small">{T('Up to four parts separated by semicolons: positive; negative; zero; text.')}</p>
         </>}
       </div>
     </div>

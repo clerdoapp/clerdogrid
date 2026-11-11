@@ -29,6 +29,8 @@ export interface RefNode {
   kind: 'cell' | 'area' | 'cols' | 'rows';
   /** External workbook reference: always #REF! here. */
   external?: boolean;
+  /** Trim-reference operators: A1.:E9 trims leading blanks, A1:.E9 trailing, A1.:.E9 both (as TRIMRANGE). */
+  trim?: 'leading' | 'trailing' | 'all';
 }
 
 export interface TableSpec {
@@ -58,6 +60,10 @@ const CELL_RE = new RegExp(`^(${COL})(${ROW})(?![A-Za-z0-9_.(\\[])`);
 const AREA_RE = new RegExp(`^(${COL})(${ROW}):(${COL})(${ROW})(?![A-Za-z0-9_.(\\[])`);
 const COLS_RE = new RegExp(`^(${COL}):(${COL})(?![A-Za-z0-9_.(\\[])`);
 const ROWS_RE = new RegExp(`^(${ROW}):(${ROW})(?![A-Za-z0-9_.(\\[])`);
+const AREA_TRIM_RE = new RegExp(`^(${COL})(${ROW})(\\.?):(\\.?)(${COL})(${ROW})(?![A-Za-z0-9_.(\\[])`);
+const COLS_TRIM_RE = new RegExp(`^(${COL})(\\.?):(\\.?)(${COL})(?![A-Za-z0-9_.(\\[])`);
+const ROWS_TRIM_RE = new RegExp(`^(${ROW})(\\.?):(\\.?)(${ROW})(?![A-Za-z0-9_.(\\[])`);
+const trimKind = (a: string, b: string): RefNode['trim'] => (a && b ? 'all' : a ? 'leading' : b ? 'trailing' : undefined);
 const NAME_RE = /^[A-Za-z_\\À-￿][A-Za-z0-9_.\\?À-￿]*/;
 const SHEET_PLAIN = /^([A-Za-z_À-￿][A-Za-z0-9_.À-￿]*(?::[A-Za-z_À-￿][A-Za-z0-9_.À-￿]*)?)!/;
 
@@ -73,6 +79,19 @@ const validRef = (n: RefNode): boolean => n.r1 >= 0 && n.c1 >= 0 && n.r2 < MAX_R
 
 /** Tries to read a reference (cell, area, columns, rows) at the start of `s`. */
 const readRef = (s: string): { len: number; ref: RefNode } | null => {
+  if (s.includes('.:') || s.includes(':.')) {
+    // Same shapes with a trim operator; the plain readers below refuse the dot.
+    let t = AREA_TRIM_RE.exec(s);
+    if (t && (t[3] || t[4])) {
+      const r = readRef(`${t[1]}${t[2]}:${t[5]}${t[6]}`);
+      if (r && r.ref.kind === 'area') return { len: t[0].length, ref: { ...r.ref, trim: trimKind(t[3]!, t[4]!) } };
+      if (r && r.ref.kind === 'cell') return { len: t[0].length, ref: { ...r.ref, kind: 'area', trim: trimKind(t[3]!, t[4]!) } };
+    }
+    t = COLS_TRIM_RE.exec(s);
+    if (t && (t[2] || t[3])) { const r = readRef(`${t[1]}:${t[4]}`); if (r) return { len: t[0].length, ref: { ...r.ref, trim: trimKind(t[2]!, t[3]!) } }; }
+    t = ROWS_TRIM_RE.exec(s);
+    if (t && (t[2] || t[3])) { const r = readRef(`${t[1]}:${t[4]}`); if (r) return { len: t[0].length, ref: { ...r.ref, trim: trimKind(t[2]!, t[3]!) } }; }
+  }
   let m = AREA_RE.exec(s);
   if (m) {
     const a = cellPart(m[1]!, m[2]!), b = cellPart(m[3]!, m[4]!);
@@ -420,10 +439,38 @@ const isRefLike = (n: Node): boolean =>
 const cache = new Map<string, Node>();
 
 /** Parses a formula (without the leading "="). Results are cached by text. */
+const TRO_KIND: Record<string, RefNode['trim']> = { _TRO_ALL: 'all', _TRO_LEADING: 'leading', _TRO_TRAILING: 'trailing' };
+const TRO_NAME = { all: '_TRO_ALL', leading: '_TRO_LEADING', trailing: '_TRO_TRAILING' } as const;
+
+/** Formula text as files store it: trim-reference operators become _xlfn._TRO_* calls. */
+export const trimRefsToFile = (formula: string): string => {
+  if (!formula.includes('.:') && !formula.includes(':.')) return formula;
+  let node: Node;
+  try { node = parseFormula(formula); } catch { return formula; }
+  let found = false;
+  const out = mapNode(node, (x) => {
+    if (x.type !== 'ref' || !x.ref.trim) return x;
+    found = true;
+    const { trim, ...plain } = x.ref;
+    return { type: 'call', name: `_xlfn.${TRO_NAME[trim]}`, args: [{ type: 'ref', ref: plain }] };
+  });
+  return found ? nodeText(out) : formula;
+};
+
 export const parseFormula = (formula: string): Node => {
   const hit = cache.get(formula);
   if (hit) return hit;
-  const node = new Parser(tokenize(formula)).parse();
+  let node = new Parser(tokenize(formula)).parse();
+  // Files store trim references as _xlfn._TRO_ALL(A1:E9) etc.; read them back as the operators.
+  if (/_TRO_/i.test(formula)) {
+    node = mapNode(node, (x) => {
+      if (x.type !== 'call' || x.args.length !== 1) return x;
+      const kind = TRO_KIND[x.name.toUpperCase()];
+      const a = x.args[0]!;
+      if (!kind || a.type !== 'ref' || a.ref.trim || a.ref.kind === 'cell') return x;
+      return { type: 'ref', ref: { ...a.ref, trim: kind } };
+    });
+  }
   if (cache.size > 50_000) cache.clear();
   cache.set(formula, node);
   return node;
@@ -448,11 +495,12 @@ export const refText = (r: RefNode): string => {
     prefix = (both.every((x) => quoteSheet(x) === x) ? both.join(':') : `'${both.join(':').replace(/'/g, "''")}'`) + '!';
   }
   const d = (abs: boolean) => (abs ? '$' : '');
-  if (r.kind === 'cols') return `${prefix}${d(r.c1Abs)}${colName(r.c1)}:${d(r.c2Abs)}${colName(r.c2)}`;
-  if (r.kind === 'rows') return `${prefix}${d(r.r1Abs)}${r.r1 + 1}:${d(r.r2Abs)}${r.r2 + 1}`;
+  const colon = r.trim === 'all' ? '.:.' : r.trim === 'leading' ? '.:' : r.trim === 'trailing' ? ':.' : ':';
+  if (r.kind === 'cols') return `${prefix}${d(r.c1Abs)}${colName(r.c1)}${colon}${d(r.c2Abs)}${colName(r.c2)}`;
+  if (r.kind === 'rows') return `${prefix}${d(r.r1Abs)}${r.r1 + 1}${colon}${d(r.r2Abs)}${r.r2 + 1}`;
   const a = `${d(r.c1Abs)}${colName(r.c1)}${d(r.r1Abs)}${r.r1 + 1}`;
   if (r.kind === 'cell') return prefix + a;
-  return `${prefix}${a}:${d(r.c2Abs)}${colName(r.c2)}${d(r.r2Abs)}${r.r2 + 1}`;
+  return `${prefix}${a}${colon}${d(r.c2Abs)}${colName(r.c2)}${d(r.r2Abs)}${r.r2 + 1}`;
 };
 
 const tableText = (n: Extract<Node, { type: 'table' }>): string => {

@@ -611,6 +611,7 @@ CODE|Code number of the first character of text|text
 CONCAT|Joins text from several items or ranges|text1;text2+
 COPILOT|Asks the built-in AI assistant a question and returns its answer|prompt_part1:Instruction or context for the AI;?context1+:Cell or range to give the AI as context;?prompt_part2+:More instruction text
 DBCS|Converts half-width characters to full-width|text
+JIS|Converts half-width characters to full-width (same as DBCS)|text
 DETECTLANGUAGE|Identifies the language of a piece of text|text
 DOLLAR|Formats a number as currency text|number;?decimals:Digits after the point (default 2)
 EXACT|TRUE if two texts are identical, including case|text1:First text;text2:Second text
@@ -671,6 +672,7 @@ BETADIST|Cumulative beta distribution (older version of BETA.DIST)|x;alpha;beta;
 BETAINV|Inverse beta distribution (older version of BETA.INV)|probability;alpha;beta;?A;?B
 BINOMDIST|Binomial distribution (older version of BINOM.DIST)|number_s;trials;probability_s;cumulative
 CEILING|Rounds a number up to a multiple (older version of CEILING.MATH)|number;significance
+ECMA.CEILING|Rounds a number up to a multiple (same as CEILING)|number;significance
 CHIDIST|Right-tailed chi-squared probability (older version of CHISQ.DIST.RT)|x;deg_freedom
 CHIINV|Inverse right-tailed chi-squared (older version of CHISQ.INV.RT)|probability;deg_freedom
 CHITEST|Chi-squared independence test (older version of CHISQ.TEST)|actual_range:Observed counts;expected_range:Expected counts

@@ -47,7 +47,7 @@ export function buildRuntime() {
     }
     if (!sealRealm) return;
     // No building code from text: eval and every function constructor throw.
-    const noEval = function blocked() { throw new Error("Building code from text isn't available in scripts."); };
+    const noEval = function blocked() { throw new Error('Building code from text isn\'t available in scripts.'); };
     try { Object.defineProperty(scope, 'eval', { value: noEval, writable: false, configurable: false }); } catch { /* ignore */ }
     const protos = [function () {}, async function () {}, function* () {}, async function* () {}].map((f) => Object.getPrototypeOf(f));
     for (const p of protos) { try { Object.defineProperty(p, 'constructor', { value: noEval, writable: false, configurable: false }); } catch { /* ignore */ } }
@@ -332,7 +332,7 @@ export function buildRuntime() {
     userStart = start;
     post = scope.postMessage.bind(scope);
     shadow(scope, true);
-    try { Object.defineProperty(scope, 'postMessage', { value: () => { throw new Error("postMessage isn't available in scripts."); }, configurable: false, writable: false }); } catch { /* ignore */ }
+    try { Object.defineProperty(scope, 'postMessage', { value: () => { throw new Error('postMessage isn\'t available in scripts.'); }, configurable: false, writable: false }); } catch { /* ignore */ }
   };
   /** Answers one "run" message with the result. The script's wrapper also gets local stand-ins for the blocked names. */
   const install = (scope: any, user: (...a: unknown[]) => unknown): void => {

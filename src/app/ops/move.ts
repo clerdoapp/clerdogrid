@@ -2,6 +2,7 @@ import { adjustForMove, shiftFormula } from '../../engine/refactor';
 import { MAX_COLS, MAX_ROWS } from '../../engine/types';
 import { cellKey, type Cell, type CellRange } from '../../model/workbook';
 import type { GridStore, Pos } from '../store';
+import { N, T } from '../../ui/i18n';
 
 /** Drag-and-drop of the selection: moves (or copies with Ctrl) cells, keeping references pointed at moved data. */
 export const moveRange = (store: GridStore, from: CellRange, to: Pos, copy = false): void => {
@@ -14,9 +15,9 @@ export const moveRange = (store: GridStore, from: CellRange, to: Pos, copy = fal
     const inF = r >= from.r1 && r <= from.r2 && c >= from.c1 && c <= from.c2;
     return inT && !inF && store.value(r, c) !== null;
   });
-  if (occupied && !confirm("There's already data here. Do you want to replace it?")) return;
+  if (occupied && !confirm(T('There\'s already data here. Do you want to replace it?'))) return;
   const sheet = store.sheetIndex;
-  store.change(copy ? 'Copy' : 'Move', 'book', () => {
+  store.change(copy ? N('Copy') : N('Move'), 'book', () => {
     const cells: { r: number; c: number; cell: Cell }[] = [];
     for (let r = from.r1; r <= from.r2; r++) for (let c = from.c1; c <= from.c2; c++) {
       const cell = store.sheet.cells.get(cellKey(r, c));

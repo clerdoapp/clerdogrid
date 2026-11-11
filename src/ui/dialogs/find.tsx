@@ -4,6 +4,7 @@ import { MAX_COLS, MAX_ROWS, isError } from '../../engine/types';
 import { addr, keyCol, keyRow, type CellRange } from '../../model/workbook';
 import { Dialog, Field, type DialogProps } from './Dialog';
 import { Check, goTo, Radio, Tabs } from './shared';
+import { N, T } from '../i18n';
 
 // ---------- Find & replace ----------
 
@@ -31,9 +32,9 @@ export const FindDialog = ({ store, data, close }: DialogProps<{ tab?: 'find' | 
   };
 
   const next = (): Found | null => {
-    if (!text) { store.notify('Type what to look for.'); return null; }
+    if (!text) { store.notify(T('Type what to look for.')); return null; }
     const hits = search();
-    if (!hits.length) { store.notify(`Couldn't find "${text}".`); return null; }
+    if (!hits.length) { store.notify(T('Couldn\'t find "{text}".', { text })); return null; }
     const { row, col } = store.sel.active;
     const after = (h: Found) => h.sheet !== store.sheetIndex ? false : order === 'cols' ? h.col > col || (h.col === col && h.row > row) : h.row > row || (h.row === row && h.col > col);
     let i = hits.findIndex((h) => h.sheet === store.sheetIndex && after(h));
@@ -46,43 +47,43 @@ export const FindDialog = ({ store, data, close }: DialogProps<{ tab?: 'find' | 
   };
 
   const replaceOne = () => {
-    if (!text) { store.notify('Type what to look for.'); return; }
+    if (!text) { store.notify(T('Type what to look for.')); return; }
     const { row, col } = store.sel.active;
     const here = findAll(store, { ...opts(), allSheets: false }).find((h) => h.row === row && h.col === col);
     if (here) {
-      if (store.isLocked(row, col)) { store.notify('This cell is protected.'); return; }
+      if (store.isLocked(row, col)) { store.notify(T('This cell is protected.')); return; }
       replaceAll(store, opts(), repl, here);
     }
     next();
   };
 
   const replaceEvery = () => {
-    if (!text) { store.notify('Type what to look for.'); return; }
+    if (!text) { store.notify(T('Type what to look for.')); return; }
     const n = replaceAll(store, opts(), repl);
-    store.notify(n ? `Replaced ${n} ${n === 1 ? 'cell' : 'cells'}.` : `Couldn't find "${text}".`);
+    store.notify(n ? T('Replaced {n, plural, one {# cell} other {# cells}}.', { n }) : T('Couldn\'t find "{text}".', { text }));
     setResults(null);
   };
 
   return (
-    <Dialog title="Find and replace" close={close} width={520} okLabel="Find next" onOk={() => { next(); return false; }}
+    <Dialog title={T('Find and replace')} close={close} width={520} okLabel={T('Find next')} onOk={() => { next(); return false; }}
       footer={<>
-        <button onClick={() => { if (!text) { store.notify('Type what to look for.'); return; } setResults(search()); }}>Find all</button>
-        {tab === 'replace' && <><button onClick={replaceEvery}>Replace all</button><button onClick={replaceOne}>Replace</button></>}
+        <button onClick={() => { if (!text) { store.notify(T('Type what to look for.')); return; } setResults(search()); }}>{T('Find all')}</button>
+        {tab === 'replace' && <><button onClick={replaceEvery}>{T('Replace all')}</button><button onClick={replaceOne}>{T('Replace')}</button></>}
       </>}>
-      <Tabs tabs={[['find', 'Find'], ['replace', 'Replace']] as const} value={tab} onChange={setTab} />
-      <Field label="Find what"><input autoFocus value={text} onChange={(e) => { setText(e.target.value); setResults(null); }} placeholder="Use * and ? as wildcards" /></Field>
-      {tab === 'replace' && <Field label="Replace with"><input value={repl} onChange={(e) => setRepl(e.target.value)} /></Field>}
-      <button className="tool b-more" onClick={() => setMore(!more)} aria-expanded={more}>{more ? 'Fewer options' : 'More options'}</button>
+      <Tabs tabs={[['find', N('Find')], ['replace', N('Replace')]] as const} value={tab} onChange={setTab} />
+      <Field label={T('Find what')}><input autoFocus value={text} onChange={(e) => { setText(e.target.value); setResults(null); }} placeholder={T('Use * and ? as wildcards')} /></Field>
+      {tab === 'replace' && <Field label={T('Replace with')}><input value={repl} onChange={(e) => setRepl(e.target.value)} /></Field>}
+      <button className="tool b-more" onClick={() => setMore(!more)} aria-expanded={more}>{more ? T('Fewer options') : T('More options')}</button>
       {more && <div className="b-col">
         <div className="grid3">
-          <Field label="Within"><select value={within} onChange={(e) => setWithin(e.target.value as 'sheet' | 'book')}><option value="sheet">This sheet</option><option value="book">Whole workbook</option></select></Field>
-          <Field label="Search"><select value={order} onChange={(e) => setOrder(e.target.value as 'rows' | 'cols')}><option value="rows">By rows</option><option value="cols">By columns</option></select></Field>
-          <Field label="Look in"><select value={tab === 'replace' ? 'formulas' : lookIn} disabled={tab === 'replace'} onChange={(e) => setLookIn(e.target.value as 'formulas' | 'values')}><option value="formulas">Formulas</option><option value="values">Values</option></select></Field>
+          <Field label={T('Within')}><select value={within} onChange={(e) => setWithin(e.target.value as 'sheet' | 'book')}><option value="sheet">{T('This sheet')}</option><option value="book">{T('Whole workbook')}</option></select></Field>
+          <Field label={T('Search')}><select value={order} onChange={(e) => setOrder(e.target.value as 'rows' | 'cols')}><option value="rows">{T('By rows')}</option><option value="cols">{T('By columns')}</option></select></Field>
+          <Field label={T('Look in')}><select value={tab === 'replace' ? 'formulas' : lookIn} disabled={tab === 'replace'} onChange={(e) => setLookIn(e.target.value as 'formulas' | 'values')}><option value="formulas">{T('Formulas')}</option><option value="values">{T('Values')}</option></select></Field>
         </div>
-        <div className="b-checks"><Check label="Match case" checked={matchCase} onChange={setMatchCase} /><Check label="Match entire cell" checked={whole} onChange={setWhole} /></div>
+        <div className="b-checks"><Check label={T('Match case')} checked={matchCase} onChange={setMatchCase} /><Check label={T('Match entire cell')} checked={whole} onChange={setWhole} /></div>
       </div>}
       {results && <div className="b-results">
-        <div className="muted small">{results.length} {results.length === 1 ? 'cell' : 'cells'} found</div>
+        <div className="muted small">{T('{count, plural, one {# cell found} other {# cells found}}', { count: results.length })}</div>
         <div className="b-table" role="table">
           {results.slice(0, 2000).map((h) => (
             <button key={`${h.sheet}:${h.row}:${h.col}`} className="b-tr b-link" onClick={() => goTo(store, h.sheet, h.row, h.col)}>
@@ -90,7 +91,7 @@ export const FindDialog = ({ store, data, close }: DialogProps<{ tab?: 'find' | 
             </button>
           ))}
         </div>
-        {results.length > 2000 && <div className="muted small">Showing the first 2,000.</div>}
+        {results.length > 2000 && <div className="muted small">{T('Showing the first 2,000.')}</div>}
       </div>}
     </Dialog>
   );
@@ -100,8 +101,8 @@ export const FindDialog = ({ store, data, close }: DialogProps<{ tab?: 'find' | 
 
 type Special = 'blanks' | 'constants' | 'formulas' | 'region' | 'last' | 'visible' | 'cf' | 'dv' | 'rowDiff' | 'colDiff' | 'notes';
 const SPECIALS: [Special, string][] = [
-  ['notes', 'Notes'], ['constants', 'Constants'], ['formulas', 'Formulas'], ['blanks', 'Blanks'], ['region', 'Current region'], ['last', 'Last cell'],
-  ['visible', 'Visible cells only'], ['cf', 'Conditional formats'], ['dv', 'Data validation'], ['rowDiff', 'Row differences'], ['colDiff', 'Column differences'],
+  ['notes', N('Notes')], ['constants', N('Constants')], ['formulas', N('Formulas')], ['blanks', N('Blanks')], ['region', N('Current region')], ['last', N('Last cell')],
+  ['visible', N('Visible cells only')], ['cf', N('Conditional formats')], ['dv', N('Data validation')], ['rowDiff', N('Row differences')], ['colDiff', N('Column differences')],
 ];
 const MAX_AREAS = 10000;
 
@@ -153,7 +154,7 @@ export const GotoSpecialDialog = ({ store, close }: DialogProps) => {
     const cap = MAX_AREAS * 50;
 
     if (kind === 'region') { const r = currentRegion(store); store.selectRange(r, store.sel.active); return true; }
-    if (kind === 'last') { if (b.rows < 0) { store.notify('This sheet is empty.'); return false; } goTo(store, si, b.rows, b.cols); return true; }
+    if (kind === 'last') { if (b.rows < 0) { store.notify(T('This sheet is empty.')); return false; } goTo(store, si, b.rows, b.cols); return true; }
 
     if (kind === 'constants' || kind === 'formulas') {
       for (const [k, c] of s.cells) {
@@ -181,7 +182,7 @@ export const GotoSpecialDialog = ({ store, close }: DialogProps) => {
         return here === v;
       }).map((v) => v.ranges);
       const ranges = list.flat().map((r) => ({ ...r, r2: Math.min(r.r2, MAX_ROWS - 1), c2: Math.min(r.c2, MAX_COLS - 1) }));
-      if (!ranges.length) { store.notify(kind === 'cf' ? 'No cells have conditional formatting.' : 'No cells have data validation.'); return false; }
+      if (!ranges.length) { store.notify(kind === 'cf' ? T('No cells have conditional formatting.') : T('No cells have data validation.')); return false; }
       store.sel = { ranges: ranges.slice(0, MAX_AREAS), active: { row: ranges[0]!.r1, col: ranges[0]!.c1 }, anchor: { row: ranges[0]!.r1, col: ranges[0]!.c1 } };
       store.emit();
       return true;
@@ -192,9 +193,9 @@ export const GotoSpecialDialog = ({ store, close }: DialogProps) => {
       if (kind === 'rowDiff') for (let row = a.r1; row <= Math.min(a.r2, used.r2); row++) { const ref = key(row, ac); for (let col = a.c1; col <= a.c2; col++) if (col !== ac && key(row, col) !== ref) cells.push({ row, col }); }
       else for (let col = a.c1; col <= Math.min(a.c2, used.c2); col++) { const ref = key(ar, col); for (let row = a.r1; row <= Math.min(a.r2, used.r2); row++) if (row !== ar && key(row, col) !== ref) cells.push({ row, col }); }
     }
-    if (!cells.length) { store.notify('No cells were found.'); return false; }
+    if (!cells.length) { store.notify(T('No cells were found.')); return false; }
     let ranges = packCells(cells.slice(0, cap));
-    if (ranges.length > MAX_AREAS) { ranges = ranges.slice(0, MAX_AREAS); store.notify(`Selected the first ${MAX_AREAS.toLocaleString()} areas.`); }
+    if (ranges.length > MAX_AREAS) { ranges = ranges.slice(0, MAX_AREAS); store.notify(T('Selected the first {p0} areas.', { p0: MAX_AREAS.toLocaleString() })); }
     const first = ranges[0]!;
     store.sel = { ranges, active: { row: first.r1, col: first.c1 }, anchor: { row: first.r1, col: first.c1 } };
     store.emit();
@@ -202,15 +203,15 @@ export const GotoSpecialDialog = ({ store, close }: DialogProps) => {
   };
 
   return (
-    <Dialog title="Go to special" close={close} onOk={run} width={440}>
+    <Dialog title={T('Go to special')} close={close} onOk={run} width={440}>
       <div className="b-twocol">
         <Radio name="gs" value={kind} options={SPECIALS} onChange={setKind} />
       </div>
       {(kind === 'constants' || kind === 'formulas') && <div className="b-checks">
         {types4.map(([k, v]) => <Check key={k} label={k[0]!.toUpperCase() + k.slice(1)} checked={v} onChange={(x) => setTypes({ ...types, [k]: x })} />)}
       </div>}
-      {kind === 'dv' && <Radio name="dv" row value={dvAll} options={[['all', 'All'], ['same', 'Same as the active cell']]} onChange={setDvAll} />}
-      <p className="muted small">With one cell selected, the whole used area is searched; otherwise only the selection.</p>
+      {kind === 'dv' && <Radio name="dv" row value={dvAll} options={[['all', N('All')], ['same', N('Same as the active cell')]]} onChange={setDvAll} />}
+      <p className="muted small">{T('With one cell selected, the whole used area is searched; otherwise only the selection.')}</p>
     </Dialog>
   );
 };

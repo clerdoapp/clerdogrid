@@ -3,9 +3,10 @@ import { parseFormula } from '../../engine/parser';
 import type { CfOperator, DataValidation } from '../../model/workbook';
 import { Dialog, Field, type DialogProps } from './Dialog';
 import { Check, overlaps, subtractRange, Tabs } from './shared';
+import { N, T, Tr } from '../i18n';
 
 type Allow = DataValidation['type'];
-const ALLOW: [Allow, string][] = [['any', 'Any value'], ['whole', 'Whole number'], ['decimal', 'Decimal'], ['list', 'List'], ['date', 'Date'], ['time', 'Time'], ['textLength', 'Text length'], ['custom', 'Custom formula']];
+const ALLOW: [Allow, string][] = [['any', N('Any value')], ['whole', N('Whole number')], ['decimal', N('Decimal')], ['list', N('List')], ['date', N('Date')], ['time', N('Time')], ['textLength', N('Text length')], ['custom', N('Custom formula')]];
 const OPS: [CfOperator, string][] = [['between', 'between'], ['notBetween', 'not between'], ['equal', 'equal to'], ['notEqual', 'not equal to'], ['greaterThan', 'greater than'], ['lessThan', 'less than'], ['greaterThanOrEqual', 'greater than or equal to'], ['lessThanOrEqual', 'less than or equal to']];
 
 /** The stored formula without "=": a list typed as "a, b" becomes a quoted constant. */
@@ -62,21 +63,21 @@ export const ValidationDialog = ({ store, close }: DialogProps) => {
   };
 
   const ok = () => {
-    if (allow === 'any' && !showPrompt) { writeRules(null, 'Data validation'); return true; }
+    if (allow === 'any' && !showPrompt) { writeRules(null, N('Data validation')); return true; }
     let formula1: string | undefined, formula2: string | undefined;
     if (allow === 'list') {
-      if (!v1.trim()) { store.notify('Enter the list items separated by commas, or a range like =$A$1:$A$9.'); setTab('settings'); return false; }
+      if (!v1.trim()) { store.notify(T('Enter the list items separated by commas, or a range like =$A$1:$A$9.')); setTab('settings'); return false; }
       formula1 = listFormula(v1);
-      if (formula1.length > 255 && formula1.startsWith('"')) { store.notify('A typed list can be at most 255 characters. Put the items in cells and use a range.'); return false; }
+      if (formula1.length > 255 && formula1.startsWith('"')) { store.notify(T('A typed list can be at most 255 characters. Put the items in cells and use a range.')); return false; }
     } else if (allow === 'custom') {
       formula1 = v1.trim().replace(/^=/, '');
-      if (!formula1) { store.notify('Enter a formula that returns TRUE for allowed values, like =A1>0.'); return false; }
+      if (!formula1) { store.notify(T('Enter a formula that returns TRUE for allowed values, like =A1>0.')); return false; }
     } else if (ranged) {
       const a = valueFormula(v1, allow), b = two ? valueFormula(v2, allow) : undefined;
-      if (a === null || (two && b === null)) { store.notify(two ? 'Enter a minimum and a maximum (a number, date, or =formula).' : 'Enter a value (a number, date, or =formula).'); setTab('settings'); return false; }
+      if (a === null || (two && b === null)) { store.notify(two ? T('Enter a minimum and a maximum (a number, date, or =formula).') : T('Enter a value (a number, date, or =formula).')); setTab('settings'); return false; }
       formula1 = a; formula2 = b ?? undefined;
     }
-    for (const f of [formula1, formula2]) if (f) { try { parseFormula(f); } catch { store.notify('One of the formulas has a problem. Check brackets and quotes.'); return false; } }
+    for (const f of [formula1, formula2]) if (f) { try { parseFormula(f); } catch { store.notify(T('One of the formulas has a problem. Check brackets and quotes.')); return false; } }
     const rule: DataValidation = {
       ranges: store.sel.ranges.map((r) => ({ ...r })),
       type: allow,
@@ -87,43 +88,43 @@ export const ValidationDialog = ({ store, close }: DialogProps) => {
       prompt: showPrompt && pText.trim() ? { title: pTitle.trim() || undefined, text: pText.trim() } : undefined,
       error: showError ? { style: eStyle, title: eTitle.trim() || undefined, text: eText.trim() } : undefined,
     };
-    writeRules(rule, 'Data validation');
+    writeRules(rule, N('Data validation'));
     return true;
   };
 
   return (
-    <Dialog title="Data validation" close={close} onOk={ok} width={480}
-      footer={<button onClick={() => { writeRules(null, 'Clear validation'); store.notify('Validation removed from the selection.'); close(); }}>Clear all</button>}>
-      <Tabs tabs={[['settings', 'Settings'], ['input', 'Input message'], ['error', 'Error alert']] as const} value={tab} onChange={setTab} />
+    <Dialog title={T('Data validation')} close={close} onOk={ok} width={480}
+      footer={<button onClick={() => { writeRules(null, N('Clear validation')); store.notify(T('Validation removed from the selection.')); close(); }}>{T('Clear all')}</button>}>
+      <Tabs tabs={[['settings', N('Settings')], ['input', N('Input message')], ['error', N('Error alert')]] as const} value={tab} onChange={setTab} />
       {tab === 'settings' && <div className="b-col">
         <div className="grid2">
-          <Field label="Allow"><select value={allow} onChange={(e) => setAllow(e.target.value as Allow)}>{ALLOW.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-          {ranged && <Field label="Data"><select value={op} onChange={(e) => setOp(e.target.value as CfOperator)}>{OPS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>}
+          <Field label={T('Allow')}><select value={allow} onChange={(e) => setAllow(e.target.value as Allow)}>{ALLOW.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select></Field>
+          {ranged && <Field label={T('Data')}><select value={op} onChange={(e) => setOp(e.target.value as CfOperator)}>{OPS.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select></Field>}
         </div>
         {ranged && <div className="grid2">
-          <Field label={two ? 'Minimum' : 'Value'}><input value={v1} onChange={(e) => setV1(e.target.value)} placeholder={allow === 'date' ? '1/1/2026 or =TODAY()' : allow === 'time' ? '9:00 or =B1' : '0 or =B1'} /></Field>
-          {two && <Field label="Maximum"><input value={v2} onChange={(e) => setV2(e.target.value)} placeholder={allow === 'date' ? '12/31/2026' : '100'} /></Field>}
+          <Field label={two ? T('Minimum') : T('Value')}><input value={v1} onChange={(e) => setV1(e.target.value)} placeholder={allow === 'date' ? '1/1/2026 or =TODAY()' : allow === 'time' ? '9:00 or =B1' : '0 or =B1'} /></Field>
+          {two && <Field label={T('Maximum')}><input value={v2} onChange={(e) => setV2(e.target.value)} placeholder={allow === 'date' ? '12/31/2026' : '100'} /></Field>}
         </div>}
         {allow === 'list' && <>
-          <Field label="Source"><input value={v1} onChange={(e) => setV1(e.target.value)} placeholder="Yes, No, Maybe   or   =$A$1:$A$9" /></Field>
-          <Check label="Show a dropdown in the cell" checked={dropdown} onChange={setDropdown} />
+          <Field label={T('Source')}><input value={v1} onChange={(e) => setV1(e.target.value)} placeholder={T('Yes, No, Maybe   or   =$A$1:$A$9')} /></Field>
+          <Check label={T('Show a dropdown in the cell')} checked={dropdown} onChange={setDropdown} />
         </>}
-        {allow === 'custom' && <Field label="Formula"><input className="mono" value={v1} onChange={(e) => setV1(e.target.value)} placeholder="=ISNUMBER(A1)" /></Field>}
-        {allow !== 'any' && <Check label="Ignore blank cells" checked={blank} onChange={setBlank} />}
-        <p className="muted small">Applies to the selected cells. Rules already on these cells are replaced.</p>
+        {allow === 'custom' && <Field label={T('Formula')}><input className="mono" value={v1} onChange={(e) => setV1(e.target.value)} placeholder={T('=ISNUMBER(A1)')} /></Field>}
+        {allow !== 'any' && <Check label={T('Ignore blank cells')} checked={blank} onChange={setBlank} />}
+        <p className="muted small">{T('Applies to the selected cells. Rules already on these cells are replaced.')}</p>
       </div>}
       {tab === 'input' && <div className="b-col">
-        <Check label="Show a message when the cell is selected" checked={showPrompt} onChange={setShowPrompt} />
-        <Field label="Title"><input value={pTitle} maxLength={32} disabled={!showPrompt} onChange={(e) => setPTitle(e.target.value)} /></Field>
-        <Field label="Message"><textarea value={pText} maxLength={255} disabled={!showPrompt} onChange={(e) => setPText(e.target.value)} /></Field>
+        <Check label={T('Show a message when the cell is selected')} checked={showPrompt} onChange={setShowPrompt} />
+        <Field label={T('Title')}><input value={pTitle} maxLength={32} disabled={!showPrompt} onChange={(e) => setPTitle(e.target.value)} /></Field>
+        <Field label={T('Message')}><textarea value={pText} maxLength={255} disabled={!showPrompt} onChange={(e) => setPText(e.target.value)} /></Field>
       </div>}
       {tab === 'error' && <div className="b-col">
-        <Check label="Show an alert when the entry isn't allowed" checked={showError} onChange={setShowError} />
-        <Field label="Kind"><select value={eStyle} disabled={!showError} onChange={(e) => setEStyle(e.target.value as typeof eStyle)}>
-          <option value="stop">Stop: block the entry</option><option value="warning">Warning: ask before keeping it</option><option value="information">Information: just tell</option>
+        <Check label={T('Show an alert when the entry isn\'t allowed')} checked={showError} onChange={setShowError} />
+        <Field label={T('Kind')}><select value={eStyle} disabled={!showError} onChange={(e) => setEStyle(e.target.value as typeof eStyle)}>
+          <option value="stop">{T('Stop: block the entry')}</option><option value="warning">{T('Warning: ask before keeping it')}</option><option value="information">{T('Information: just tell')}</option>
         </select></Field>
-        <Field label="Title"><input value={eTitle} maxLength={32} disabled={!showError} onChange={(e) => setETitle(e.target.value)} /></Field>
-        <Field label="Message"><textarea value={eText} maxLength={255} disabled={!showError} onChange={(e) => setEText(e.target.value)} placeholder="This value isn't allowed here." /></Field>
+        <Field label={T('Title')}><input value={eTitle} maxLength={32} disabled={!showError} onChange={(e) => setETitle(e.target.value)} /></Field>
+        <Field label={T('Message')}><textarea value={eText} maxLength={255} disabled={!showError} onChange={(e) => setEText(e.target.value)} placeholder={T('This value isn\'t allowed here.')} /></Field>
       </div>}
     </Dialog>
   );

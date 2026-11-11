@@ -110,11 +110,40 @@ jobs:
             release/*.tar.gz
           if-no-files-found: error
 
+  cli:
+    name: Command-line tool (.mjs)
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run cli -- --strict
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          node dist-cli/clerdogrid.mjs --version
+          node dist-cli/clerdogrid.mjs info examples/sales.xlsx
+      - name: Name the file
+        run: |
+          set -euo pipefail
+          mkdir -p cli-out
+          cp dist-cli/clerdogrid.mjs "cli-out/clerdogrid-cli-${{ needs.version.outputs.version }}.mjs"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: cli
+          path: cli-out/*.mjs
+          if-no-files-found: error
+
   publish:
     name: Publish the release
     # Publishes whatever built, so one unavailable runner doesn't hold back the others.
     if: ${{ !cancelled() && github.ref_type == 'tag' && needs.version.result == 'success' }}
-    needs: [version, windows, macos, linux]
+    needs: [version, windows, macos, linux, cli]
     runs-on: ubuntu-latest
     permissions:
       contents: write

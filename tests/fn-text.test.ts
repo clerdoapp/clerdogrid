@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defs } from '../src/engine/functions/text';
-import { CellError, Err, ref, type Value } from '../src/engine/types';
+import { Err, ref, type Value } from '../src/engine/types';
 import { makeCtx } from './fnctx';
 
 const ctx = makeCtx([[['a', 'b', null, 'c'], [1, true, Err.div0, 'd']]]);
@@ -236,8 +236,8 @@ describe('regular expressions', () => {
 describe('misc', () => {
   it('PHONETIC/online functions/scalar flags', () => {
     expect(call('PHONETIC', ref(0, 0, 0, 0, 1))).toBe('ab');
-    expect(call('DETECTLANGUAGE', 'hello')).toEqual(new CellError('#CONNECT!'));
-    expect(call('TRANSLATE', 'hello', 'en', 'es')).toEqual(new CellError('#CONNECT!'));
+    // TRANSLATE and DETECTLANGUAGE live with the other online functions (tests/fn-web.test.ts).
+    expect(defs.some((d) => d.name === 'TRANSLATE' || d.name === 'DETECTLANGUAGE')).toBe(false);
     expect(defs.find((d) => d.name === 'LEFT')!.scalar).toBe(true);
     expect(defs.find((d) => d.name === 'CONCAT')!.scalar).toBeUndefined();
     expect(new Set(defs.map((d) => d.name)).size).toBe(defs.length);

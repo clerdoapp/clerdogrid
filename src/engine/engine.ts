@@ -3,6 +3,7 @@ import { parseFormula, walk, type Node } from './parser';
 import { getFunction, VOLATILE_SPECIAL } from './registry';
 import { CellError, Err, isError, isMatrix, MAX_COLS, MAX_ROWS, ref, type Matrix, type RangeRef, type Scalar } from './types';
 import { cellKey, keyCol, keyRow, type Cell, type Workbook } from '../model/workbook';
+import { pivotResolver } from './pivotHook';
 
 /** "sheet:key" for one formula cell. */
 type Id = string;
@@ -41,6 +42,12 @@ export class Engine implements Host {
   iterate = false;
   maxIterations = 100;
   maxChange = 0.001;
+  /** Manual calculation: only formulas that were just entered are calculated until a full recalculation. */
+  manual = false;
+  /** Some formulas may be out of date because calculation is manual. */
+  stale = false;
+  /** Precision as displayed: rounds each numeric formula result to what its number format shows. */
+  roundResult: ((sheet: number, row: number, col: number, v: number) => number) | null = null;
 
   constructor(public wb: Workbook) {
     this.evaluator = new Evaluator(this);
@@ -143,6 +150,11 @@ export class Engine implements Host {
     const s = this.wb.sheets[sheet];
     const c = s?.cells.get(cellKey(row, col));
     return (c?.s ? this.wb.styles[c.s]?.numFmt : undefined) ?? 'General';
+  }
+
+  pivotData(sheet: number, row: number, col: number, dataField: string, pairs: [string, Scalar][]): Scalar {
+    const r = pivotResolver();
+    return r ? r(this.wb, sheet, row, col, dataField, pairs) : Err.ref;
   }
 
   // ---------- Dependencies ----------
@@ -326,7 +338,8 @@ export class Engine implements Host {
 
   /** Recalculates everything affected by changes since the last call. Returns the cells whose value changed. */
   recalc(full = false): { sheet: number; row: number; col: number }[] {
-    if (full) for (const id of this.deps.keys()) this.pending.add(id);
+    if (this.manual && !full) return this.recalcEntered();
+    if (full) { for (const id of this.deps.keys()) this.pending.add(id); this.stale = false; }
     const dirty = new Set<Id>(this.pending);
     for (const id of this.volatile) dirty.add(id);
     const queue: Area[] = this.changedCells;
@@ -342,6 +355,20 @@ export class Engine implements Host {
       dirty.clear();
       for (const a of spillChanges) this.expandArea(a, dirty);
     }
+    return changed;
+  }
+
+  /** Manual mode: calculates just the formulas that were set, and remembers that their dependents are out of date. */
+  private recalcEntered(): { sheet: number; row: number; col: number }[] {
+    const entered = new Set<Id>(this.pending);
+    const affected = new Set<Id>(entered);
+    for (const a of this.changedCells) this.expandArea(a, affected);
+    this.changedCells = [];
+    this.pending.clear();
+    const changed: { sheet: number; row: number; col: number }[] = [];
+    if (entered.size) { this.circular = []; this.calculate(entered, changed, []); }
+    this.closure(affected);
+    if ([...affected].some((id) => !entered.has(id))) this.stale = true;
     return changed;
   }
 
@@ -490,6 +517,7 @@ export class Engine implements Host {
     } else {
       this.clearSpill(sheet, key, spillChanges);
     }
+    if (this.roundResult && typeof result === 'number') result = this.roundResult(sheet, row, col, result);
     cell.v = result;
     if (!sameValue(before, result)) changed.push({ sheet, row, col });
   }

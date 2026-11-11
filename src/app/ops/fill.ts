@@ -4,6 +4,7 @@ import { isDateFormat } from '../../formats/numfmt';
 import { cellKey, internStyle, type CellRange } from '../../model/workbook';
 import type { Scalar } from '../../engine/types';
 import type { GridStore } from '../store';
+import { N } from '../../ui/i18n';
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -86,7 +87,7 @@ export const autoFill = (store: GridStore, source: CellRange, target: CellRange,
   const vertical = target.c1 === source.c1 && target.c2 === source.c2;
   const forward = vertical ? target.r2 > source.r2 : target.c2 > source.c2;
   const shrinking = vertical ? target.r2 < source.r2 : target.c2 < source.c2;
-  store.change('AutoFill', [{ area: target }, { area: source }], () => {
+  store.change(N('AutoFill'), [{ area: target }, { area: source }], () => {
     if (shrinking) {
       // Dragging back into the selection clears what's left behind.
       const clear: CellRange = vertical ? { ...source, r1: target.r2 + 1 } : { ...source, c1: target.c2 + 1 };
@@ -145,7 +146,7 @@ export const fillDirection = (store: GridStore, dir: 'down' | 'right' | 'up' | '
 export const fillSeries = (store: GridStore, opts: { byRows: boolean; type: 'linear' | 'growth' | 'date'; unit?: 'day' | 'weekday' | 'month' | 'year'; step: number; stop?: number }): void => {
   const r = store.range;
   const sheet = store.sheetIndex;
-  store.change('Series', [{ area: r }], () => {
+  store.change(N('Series'), [{ area: r }], () => {
     const lines = opts.byRows ? r.r2 - r.r1 + 1 : r.c2 - r.c1 + 1;
     const len = opts.byRows ? r.c2 - r.c1 + 1 : r.r2 - r.r1 + 1;
     for (let li = 0; li < lines; li++) {
@@ -169,63 +170,6 @@ export const fillSeries = (store: GridStore, opts: { byRows: boolean; type: 'lin
   });
 };
 
-/** Flash Fill: learns a text pattern from the examples typed next to a column and fills the rest. */
-export const flashFill = (store: GridStore): boolean => {
-  const { row, col } = store.sel.active;
-  const sheet = store.sheetIndex;
-  const examples: { inputs: string[]; out: string; row: number }[] = [];
-  const inputsAt = (r: number): string[] => {
-    const out: string[] = [];
-    for (let c = col - 1; c >= 0 && c >= col - 4; c--) { const v = store.value(r, c); if (v === null) break; out.unshift(String(v)); }
-    return out;
-  };
-  let top = row;
-  while (top > 0 && store.value(top - 1, col - 1) !== null) top--;
-  let bottom = row;
-  while (store.value(bottom + 1, col - 1) !== null) bottom++;
-  for (let r = top; r <= bottom; r++) {
-    const v = store.value(r, col);
-    if (typeof v === 'string' && v) examples.push({ inputs: inputsAt(r), out: v, row: r });
-  }
-  if (!examples.length) { store.notify('Type an example of what you want in the cell next to your data, then try Flash Fill again.'); return false; }
-  const program = learn(examples);
-  if (!program) { store.notify("Flash Fill couldn't find a pattern. Give one or two more examples."); return false; }
-  store.change('Flash Fill', [{ area: { r1: top, c1: col, r2: bottom, c2: col } }], () => {
-    for (let r = top; r <= bottom; r++) {
-      if (store.value(r, col) !== null) continue;
-      const out = program(inputsAt(r));
-      if (out !== null) store.engine.setValue(sheet, r, col, out);
-    }
-  });
-  return true;
-};
-
-type Program = (inputs: string[]) => string | null;
-
-/** Tries a small family of text programs (token picks, case changes, joins) that explain every example. */
-const learn = (ex: { inputs: string[]; out: string }[]): Program | null => {
-  const cases: ((s: string) => string)[] = [(s) => s, (s) => s.toUpperCase(), (s) => s.toLowerCase(), (s) => s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(), (s) => s.charAt(0)];
-  const tokensOf = (inputs: string[]) => inputs.flatMap((s, i) => [s, ...s.split(/[\s,;@._\-/]+/).filter(Boolean)].map((t) => ({ t, i })));
-  const first = ex[0]!;
-  const toks = tokensOf(first.inputs);
-  // Find a split of the output into pieces that are (cased) tokens or literal separators.
-  const pieces: ({ tok: number; cs: number } | { lit: string })[] = [];
-  let rest = first.out;
-  while (rest) {
-    let best: { tok: number; cs: number; len: number } | null = null;
-    toks.forEach((tk, ti) => cases.forEach((cf, ci) => {
-      const v = cf(tk.t);
-      if (v && rest.startsWith(v) && (!best || v.length > best.len)) best = { tok: ti, cs: ci, len: v.length };
-    }));
-    if (best) { const b = best as { tok: number; cs: number; len: number }; pieces.push({ tok: b.tok, cs: b.cs }); rest = rest.slice(b.len); }
-    else { const last = pieces.at(-1); if (last && 'lit' in last) last.lit += rest[0]; else pieces.push({ lit: rest[0]! }); rest = rest.slice(1); }
-  }
-  const prog: Program = (inputs) => {
-    const t = tokensOf(inputs);
-    if (t.length !== toks.length) return null;
-    return pieces.map((p) => ('lit' in p ? p.lit : cases[p.cs]!(t[p.tok]?.t ?? ''))).join('');
-  };
-  return ex.every((e) => prog(e.inputs) === e.out) ? prog : null;
-};
+export { flashFill } from './flash';
 
 export { internStyle };

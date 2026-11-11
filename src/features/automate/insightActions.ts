@@ -5,6 +5,7 @@ import { CellError, type Scalar } from '../../engine/types';
 import { colName, internStyle, newSheet, type CellRange, type Chart, type ChartSeries, type ChartType } from '../../model/workbook';
 import { refString } from '../../ui/charts/chartData';
 import { analyze, type Ask, type Insights } from './insights';
+import { N, T } from '../../ui/i18n';
 
 export interface DataBlock { sheet: number; sheetName: string; range: CellRange; headers: string[]; rows: Scalar[][]; hasHeader: boolean }
 
@@ -68,7 +69,7 @@ const headCell = (block: DataBlock, i: number): string | undefined =>
   block.hasHeader ? refString(block.sheetName, { r1: block.range.r1, c1: block.range.c1 + i, r2: block.range.r1, c2: block.range.c1 + i }) : undefined;
 
 const AGG_LAMBDA: Record<string, string> = { sum: 'SUM', average: 'AVERAGE', count: 'COUNTA', min: 'MIN', max: 'MAX' };
-const AGG_LABEL: Record<string, string> = { sum: 'Total', average: 'Average', count: 'Count', min: 'Lowest', max: 'Highest' };
+const AGG_LABEL: Record<string, string> = { sum: N('Total'), average: N('Average'), count: N('Count'), min: N('Lowest'), max: N('Highest') };
 
 export interface SummarySpec { by: number; val?: number; agg: 'sum' | 'average' | 'count' | 'min' | 'max'; top?: number; bottom?: boolean; chart?: ChartType; title: string }
 
@@ -85,7 +86,7 @@ export const summaryFormula = (block: DataBlock, s: SummarySpec): string => {
 /** Adds a sheet with a summary table (a GROUPBY formula) and, optionally, a chart of it. One undo step. */
 export const insertSummary = (store: GridStore, block: DataBlock, s: SummarySpec): void => {
   const valName = s.val !== undefined ? block.headers[s.val]! : 'Rows';
-  store.change('Insert summary', 'book', () => {
+  store.change(N('Insert summary'), 'book', () => {
     const name = uniqueName(store, s.title);
     store.wb.sheets.push(newSheet(name));
     store.engine.sheetsChanged();
@@ -121,7 +122,7 @@ export const insertSourceChart = (store: GridStore, block: DataBlock, type: Char
     axisTitles: type === 'scatter' ? { x: block.headers[x], y: block.headers[ys[0]!] } : undefined,
   };
   if (store.sheetIndex !== block.sheet) store.setActiveSheet(block.sheet);
-  store.change('Insert chart', 'sheet', () => { store.sheet.charts.push(chart); });
+  store.change(N('Insert chart'), 'sheet', () => { store.sheet.charts.push(chart); });
 };
 
 /** Result of an "ask" question: a single number to show, or something inserted. */
@@ -129,19 +130,19 @@ export const runAsk = (store: GridStore, block: DataBlock, ask: Ask): string => 
   const h = block.headers;
   switch (ask.kind) {
     case 'group': {
-      const title = ask.agg === 'count' ? `Count by ${h[ask.by]}` : `${AGG_LABEL[ask.agg]} ${h[ask.val!]} by ${h[ask.by]}`;
+      const title = ask.agg === 'count' ? T('Count by {p0}', { p0: h[ask.by] }) : `${AGG_LABEL[ask.agg]} ${h[ask.val!]} by ${h[ask.by]}`;
       insertSummary(store, block, { by: ask.by, val: ask.agg === 'count' ? undefined : ask.val, agg: ask.agg, chart: 'column', title });
-      return `Added a summary sheet: ${title}.`;
+      return T('Added a summary sheet: {title}.', { title });
     }
     case 'top': {
       const title = `${ask.bottom ? 'Bottom' : 'Top'} ${ask.n} ${h[ask.by]} by ${h[ask.val]}`;
       insertSummary(store, block, { by: ask.by, val: ask.val, agg: 'sum', top: ask.n, bottom: ask.bottom, chart: 'bar', title });
-      return `Added a summary sheet: ${title}.`;
+      return T('Added a summary sheet: {title}.', { title });
     }
     case 'trend': {
       const title = `${h[ask.val]} over ${h[ask.x]}`;
       insertSourceChart(store, block, 'line', ask.x, [ask.val], title);
-      return `Added a line chart: ${title}.`;
+      return T('Added a line chart: {title}.', { title });
     }
     case 'total': {
       const nums = block.rows.map((r) => r[ask.val]).filter((v): v is number => typeof v === 'number');

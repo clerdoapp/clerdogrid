@@ -7,9 +7,18 @@ import {
 import { isError, type Scalar } from '../engine/types';
 import { XML_HEAD, el, esc, escXstr } from './xml';
 import { StyleWriter, argb, fontXml } from './xlsx-styles';
-import { DRAWING_HEAD, anchorXml, chartFrameXml, chartXml, fileColWidth, pictureXml } from './xlsx-chart';
+import { DRAWING_HEAD, anchorXml, fileColWidth, pictureXml } from './xlsx-chart';
+import { CHARTSHEET_CT, cellLookup, chartAnchorXml, chartsheetXml, type PartWriter } from './xlsx-chartex';
+import { sparklinesExtXml } from './xlsx-sparklines';
 import { addFuturePrefixes, quoteSheet } from './formula-xml';
+import { HF_IMG_EXT, headerPicturesVml, pageSetUpPrXml, pageSetupXml, printTitlesFormula } from './xlsx-page';
+import { PivotWriter } from './xlsx-pivot';
+import { SlicerWriter } from './xlsx-slicer';
 import { OBJECTS_CT, OBJECTS_PATH, OBJECTS_REL, legacyNotes, objectsPart, protectedRangesXml, shapeXml, withDescr } from './xlsx-objects';
+import {
+  NSV_CT, NSV_REL, WORKSPACE_CT, WORKSPACE_PATH, WORKSPACE_REL, customSheetViewsXml, customWorkbookViewsXml, ignoredErrorsXml, namedSheetViewsXml,
+  sheetProtectionAttrs, splitPaneXml, workbookProtectionXml, workspacePart,
+} from './xlsx-workspace';
 
 const NS_MAIN = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -120,7 +129,7 @@ const cfXml = (cf: ConditionalFormat, startPriority: number, styles: StyleWriter
   return { xml: el('conditionalFormatting', { sqref: cf.ranges.map(rangeAddr).join(' ') }, rules.join('')), used: p - startPriority };
 };
 
-const tableXml = (t: TableDef, id: number): string => {
+const tableXml = (t: TableDef, id: number, filterColumns = ''): string => {
   const cols = t.columns.map((c, i) => {
     const std = c.totalsFunction && /^(sum|min|max|average|count|countNums|stdDev|var)$/.test(c.totalsFunction);
     const inner = (c.calculatedFormula ? `<calculatedColumnFormula>${fout(c.calculatedFormula)}</calculatedColumnFormula>` : '')
@@ -131,7 +140,7 @@ const tableXml = (t: TableDef, id: number): string => {
   return `${XML_HEAD}<table xmlns="${NS_MAIN}"${el('x', {
     id, name: t.name, displayName: t.name, ref: rangeAddr(t.range),
     headerRowCount: t.headerRow ? undefined : 0, totalsRowCount: t.totalsRow ? 1 : undefined, totalsRowShown: t.totalsRow ? undefined : false,
-  }).slice(2, -2)}>${t.headerRow ? el('autoFilter', { ref: rangeAddr(dataRange) }) : ''}<tableColumns count="${t.columns.length}">${cols}</tableColumns>`
+  }).slice(2, -2)}>${t.headerRow ? el('autoFilter', { ref: rangeAddr(dataRange) }, filterColumns || undefined) : ''}<tableColumns count="${t.columns.length}">${cols}</tableColumns>`
     + el('tableStyleInfo', { name: t.style ?? 'TableStyleMedium2', showFirstColumn: false, showLastColumn: false, showRowStripes: t.bandedRows ?? true, showColumnStripes: t.bandedCols ?? false })
     + '</table>';
 };
@@ -174,6 +183,8 @@ interface Out {
   styles: StyleWriter;
   sst: SharedStrings;
   usesDynamic: boolean;
+  pivots?: PivotWriter;
+  slicers?: SlicerWriter;
 }
 
 const put = (o: Out, path: string, text: string, ct?: string): void => {
@@ -181,13 +192,41 @@ const put = (o: Out, path: string, text: string, ct?: string): void => {
   if (ct) o.overrides.set('/' + path, ct);
 };
 
+/** Chart parts (classic and extended) for one drawing part. */
+const chartWriter = (wb: Workbook, o: Out, dRels: Rels): PartWriter => ({
+  put: (path, text, ct) => put(o, path, text, ct),
+  rel: (type, target) => dRels.add(type, target),
+  nextChart: () => ++o.counters.chart,
+  look: cellLookup(wb),
+});
+
+/** A chart sheet: the chartsheet part, its drawing and the chart. */
+const chartsheetPart = (wb: Workbook, si: number, o: Out): string => {
+  const s = wb.sheets[si]!;
+  const dRels = new Rels();
+  const rels = new Rels();
+  const w = {
+    ...chartWriter(wb, o, dRels),
+    drawing: (body: string) => {
+      const dn = ++o.counters.drawing;
+      put(o, `xl/drawings/drawing${dn}.xml`, `${XML_HEAD}${DRAWING_HEAD}${body}</xdr:wsDr>`, CT + 'drawing+xml');
+      put(o, `xl/drawings/_rels/drawing${dn}.xml.rels`, dRels.xml());
+      return rels.add('drawing', `../drawings/drawing${dn}.xml`);
+    },
+  };
+  const x = chartsheetXml(s, w, withDescr, si === wb.activeSheet);
+  if (rels.size) put(o, `xl/chartsheets/_rels/sheet${si + 1}.xml.rels`, rels.xml());
+  return x;
+};
+
 const sheetXml = (wb: Workbook, si: number, o: Out): string => {
   const s = wb.sheets[si]!;
   const rels = new Rels();
   let x = `${XML_HEAD}<worksheet xmlns="${NS_MAIN}" xmlns:r="${NS_R}">`;
 
-  const fit = s.pageSetup && (s.pageSetup.fitWidth !== undefined || s.pageSetup.fitHeight !== undefined);
-  const prInner = (s.tabColor ? el('tabColor', { rgb: argb(s.tabColor) }) : '') + (fit ? '<pageSetUpPr fitToPage="1"/>' : '');
+  const outlinePr = s.outlinePr && (s.outlinePr.summaryBelow === false || s.outlinePr.summaryRight === false)
+    ? el('outlinePr', { summaryBelow: s.outlinePr.summaryBelow === false ? false : undefined, summaryRight: s.outlinePr.summaryRight === false ? false : undefined }) : '';
+  const prInner = (s.tabColor ? el('tabColor', { rgb: argb(s.tabColor) }) : '') + outlinePr + pageSetUpPrXml(s.pageSetup);
   if (prInner) x += `<sheetPr>${prInner}</sheetPr>`;
 
   // used range
@@ -207,11 +246,14 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
   if (v.frozenRows || v.frozenCols) {
     selPane = v.frozenRows && v.frozenCols ? 'bottomRight' : v.frozenRows ? 'bottomLeft' : 'topRight';
     pane = el('pane', { xSplit: v.frozenCols || undefined, ySplit: v.frozenRows || undefined, topLeftCell: addr(v.frozenRows, v.frozenCols), activePane: selPane, state: 'frozen' });
+  } else {
+    const split = splitPaneXml(s);
+    if (split) { pane = split.pane; selPane = split.activePane; }
   }
   const sel = v.selection ? el('selection', { pane: selPane, activeCell: addr(v.selection.r1, v.selection.c1), sqref: rangeAddr(v.selection) }) : selPane ? el('selection', { pane: selPane }) : '';
   x += `<sheetViews>${el('sheetView', {
     showGridLines: v.showGrid ? undefined : false, showRowColHeaders: v.showHeaders ? undefined : false, rightToLeft: v.rtl || undefined,
-    tabSelected: si === wb.activeSheet || undefined, zoomScale: v.zoom !== 100 ? v.zoom : undefined, zoomScaleNormal: v.zoom !== 100 ? v.zoom : undefined, workbookViewId: 0,
+    tabSelected: si === wb.activeSheet || undefined, view: v.pageView, zoomScale: v.zoom !== 100 ? v.zoom : undefined, zoomScaleNormal: v.zoom !== 100 ? v.zoom : undefined, workbookViewId: 0,
   }, pane + sel)}</sheetViews>`;
 
   x += el('sheetFormatPr', {
@@ -219,6 +261,8 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
     defaultColWidth: Math.abs(s.defaultColWidth - 8.43) > 0.001 ? fileColWidth(s.defaultColWidth) : undefined,
     defaultRowHeight: s.defaultRowHeight,
     customHeight: s.defaultRowHeight !== 15 || undefined,
+    outlineLevelRow: Math.max(0, ...[...s.rows.values()].map((r) => r.outline ?? 0)) || undefined,
+    outlineLevelCol: Math.max(0, ...[...s.cols.values()].map((c) => c.outline ?? 0)) || undefined,
   });
 
   if (s.cols.size) {
@@ -233,6 +277,7 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
     x += `<cols>${groups.map((g) => el('col', {
       min: g.min + 1, max: g.max + 1, width: fileColWidth(g.info.width ?? s.defaultColWidth), style: g.info.s || undefined,
       hidden: g.info.hidden || undefined, customWidth: g.info.width !== undefined || undefined, outlineLevel: g.info.outline || undefined,
+      collapsed: g.info.collapsed || undefined,
     })).join('')}</cols>`;
   }
 
@@ -267,14 +312,12 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
       const s0 = cell.s && cell.s < wb.styles.length ? cell.s : undefined;
       cells += `<c r="${ref}"${s0 ? ` s="${s0}"` : ''}${val.t ? ` t="${val.t}"` : ''}${cm ? ` cm="${cm}"` : ''}>${fx}${val.v !== undefined ? `<v>${val.v}</v>` : ''}</c>`;
     }
-    data += `<row r="${r + 1}"${info?.s ? ` s="${info.s}" customFormat="1"` : ''}${info?.height !== undefined ? ` ht="${info.height}" customHeight="1"` : ''}${info?.hidden ? ' hidden="1"' : ''}${info?.outline ? ` outlineLevel="${info.outline}"` : ''}>${cells}</row>`;
+    data += `<row r="${r + 1}"${info?.s ? ` s="${info.s}" customFormat="1"` : ''}${info?.height !== undefined ? ` ht="${info.height}" customHeight="1"` : ''}${info?.hidden ? ' hidden="1"' : ''}${info?.outline ? ` outlineLevel="${info.outline}"` : ''}${info?.collapsed ? ' collapsed="1"' : ''}>${cells}</row>`;
   }
   x += data ? `<sheetData>${data}</sheetData>` : '<sheetData/>';
 
-  if (s.protection?.sheet) {
-    const opts: Record<string, boolean> = { ...s.protection.options };
-    x += el('sheetProtection', { password: s.protection.password, sheet: true, ...opts });
-  }
+  const protAttrs = sheetProtectionAttrs(s);
+  if (protAttrs) x += el('sheetProtection', protAttrs);
   x += protectedRangesXml(s);
   if (s.autoFilter) {
     const af = s.autoFilter;
@@ -293,6 +336,7 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
       : '';
     x += el('autoFilter', { ref: rangeAddr(af.range) }, cols + sort);
   }
+  x += customSheetViewsXml(wb, si);
   if (s.merges.length) x += `<mergeCells count="${s.merges.length}">${s.merges.map((m) => el('mergeCell', { ref: rangeAddr(m) })).join('')}</mergeCells>`;
   let prio = 1;
   for (const cf of s.conditionalFormats) {
@@ -319,26 +363,20 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
     }
     if (hl) x += `<hyperlinks>${hl}</hyperlinks>`;
   }
-  const m = s.pageSetup?.margins ?? { left: 0.7, right: 0.7, top: 0.75, bottom: 0.75, header: 0.3, footer: 0.3 };
-  x += el('pageMargins', m);
-  const ps = s.pageSetup;
-  if (ps && (ps.orientation || ps.paper || fit)) {
-    x += el('pageSetup', { paperSize: ps.paper, fitToWidth: fit ? ps.fitWidth ?? 1 : undefined, fitToHeight: fit ? ps.fitHeight ?? 1 : undefined, orientation: ps.orientation });
-  }
+  x += pageSetupXml(s.pageSetup);
+  x += ignoredErrorsXml(s);
 
-  // drawings (charts, pictures and shapes share one drawing part)
-  if (s.charts.length || s.pictures.length || s.shapes?.length) {
+  o.pivots?.sheetParts(si, (t, target) => rels.add(t, target));
+  const slicerParts = o.slicers?.sheetParts(si, (t, target) => rels.add(t, target)) ?? { ext: '', anchors: [] };
+  // drawings (charts, pictures, shapes and slicers share one drawing part)
+  if (s.charts.length || s.pictures.length || s.shapes?.length || slicerParts.anchors.length) {
     const dn = ++o.counters.drawing;
     const dPath = `xl/drawings/drawing${dn}.xml`;
     const dRels = new Rels();
     let body = '';
     let shapeId = 1;
-    for (const c of s.charts) {
-      const cn = ++o.counters.chart;
-      put(o, `xl/charts/chart${cn}.xml`, chartXml(c), CT + 'drawingml.chart+xml');
-      const rid = dRels.add('chart', `../charts/chart${cn}.xml`);
-      body += anchorXml(c.anchor, s, withDescr(chartFrameXml(++shapeId, c.title ?? `Chart ${shapeId - 1}`, rid), c.alt));
-    }
+    const charts = chartWriter(wb, o, dRels);
+    for (const c of s.charts) body += chartAnchorXml(c, s, ++shapeId, charts, withDescr);
     for (const p of s.pictures) {
       const ext = IMG_EXT[p.mime] ?? 'png';
       const n = ++o.counters.image;
@@ -348,6 +386,7 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
       body += anchorXml(p.anchor, s, withDescr(pictureXml(++shapeId, `Picture ${n}`, rid, p.anchor), p.alt));
     }
     for (const sh of s.shapes ?? []) body += anchorXml(sh.anchor, s, shapeXml(++shapeId, sh));
+    body += slicerParts.anchors.join('');
     put(o, dPath, `${XML_HEAD}${DRAWING_HEAD}${body}</xdr:wsDr>`, CT + 'drawing+xml');
     put(o, `xl/drawings/_rels/drawing${dn}.xml.rels`, dRels.xml());
     x += `<drawing r:id="${rels.add('drawing', `../drawings/drawing${dn}.xml`)}"/>`;
@@ -361,15 +400,37 @@ const sheetXml = (wb: Workbook, si: number, o: Out): string => {
     rels.add('comments', `../comments${n}.xml`);
     x += `<legacyDrawing r:id="${rels.add('vmlDrawing', `../drawings/vmlDrawing${n}.vml`)}"/>`;
   }
+  const hfPics = Object.entries(s.pageSetup?.headerPictures ?? {}).filter(([, p]) => HF_IMG_EXT[p.mime]);
+  if (hfPics.length) {
+    const vRels = new Rels();
+    const ids = hfPics.map(([, p]) => {
+      const ext = HF_IMG_EXT[p.mime]!;
+      const n = ++o.counters.image;
+      o.files[`xl/media/image${n}.${ext}`] = p.data;
+      o.defaults.set(ext, p.mime);
+      return vRels.add('image', `../media/image${n}.${ext}`);
+    });
+    o.files[`xl/drawings/vmlDrawingHF${si + 1}.vml`] = enc.encode(headerPicturesVml(hfPics, ids, 100 + si));
+    o.defaults.set('vml', CT + 'vmlDrawing');
+    put(o, `xl/drawings/_rels/vmlDrawingHF${si + 1}.vml.rels`, vRels.xml());
+    x += `<legacyDrawingHF r:id="${rels.add('vmlDrawing', `../drawings/vmlDrawingHF${si + 1}.vml`)}"/>`;
+  }
   if (s.tables.length) {
     const ids = s.tables.map((t) => {
       const n = ++o.counters.table;
-      put(o, `xl/tables/table${n}.xml`, tableXml(t, n), CT + 'spreadsheetml.table+xml');
+      put(o, `xl/tables/table${n}.xml`, tableXml(t, n, o.slicers?.tableFilterXml(t) ?? ''), CT + 'spreadsheetml.table+xml');
       return rels.add('table', `../tables/table${n}.xml`);
     });
     x += `<tableParts count="${ids.length}">${ids.map((id) => `<tablePart r:id="${id}"/>`).join('')}</tableParts>`;
   }
+  const sheetExts = slicerParts.ext + sparklinesExtXml(s);
+  if (sheetExts) x += `<extLst>${sheetExts}</extLst>`;
   x += '</worksheet>';
+  const nsv = namedSheetViewsXml(s);
+  if (nsv) {
+    put(o, `xl/namedSheetViews/namedSheetView${si + 1}.xml`, nsv, NSV_CT);
+    rels.add(NSV_REL, `../namedSheetViews/namedSheetView${si + 1}.xml`);
+  }
   if (rels.size) put(o, `xl/worksheets/_rels/sheet${si + 1}.xml.rels`, rels.xml());
   return x;
 };
@@ -388,11 +449,19 @@ export const writeXlsx = (wb: Workbook): Uint8Array => {
     counters: { table: 0, drawing: 0, chart: 0, image: 0, comments: 0 },
     styles: new StyleWriter(wb.styles), sst: new SharedStrings(), usesDynamic: false,
   };
+  o.pivots = new PivotWriter(wb, { put: (p, t, ct) => put(o, p, t, ct), numFmtId: (c) => o.styles.numFmtId(c), dxf: (st) => o.styles.dxf(st), styles: wb.styles });
+  o.slicers = new SlicerWriter(wb, { put: (p, t, ct) => put(o, p, t, ct) });
   const sheets = wb.sheets.length ? wb.sheets : [];
   if (!sheets.length) throw new Error('A workbook needs at least one sheet.');
   const wbRels = new Rels();
   const sheetEls: string[] = [];
   sheets.forEach((s, i) => {
+    if (s.kind === 'chart') {
+      put(o, `xl/chartsheets/sheet${i + 1}.xml`, chartsheetPart(wb, i, o), CHARTSHEET_CT);
+      const rid = wbRels.add('chartsheet', `chartsheets/sheet${i + 1}.xml`);
+      sheetEls.push(el('sheet', { name: s.name, sheetId: i + 1, state: s.state === 'visible' ? undefined : s.state, 'r:id': rid }));
+      return;
+    }
     put(o, `xl/worksheets/sheet${i + 1}.xml`, sheetXml(wb, i, o), CT + 'spreadsheetml.worksheet+xml');
     const rid = wbRels.add('worksheet', `worksheets/sheet${i + 1}.xml`);
     sheetEls.push(el('sheet', { name: s.name, sheetId: i + 1, state: s.state === 'visible' ? undefined : s.state, 'r:id': rid }));
@@ -402,7 +471,8 @@ export const writeXlsx = (wb: Workbook): Uint8Array => {
   const names: string[] = [];
   const nameEl = (name: string, formula: string, sheet?: number, hidden?: boolean, comment?: string): string =>
     el('definedName', { name, comment, localSheetId: sheet, hidden: hidden || undefined }, fout(formula));
-  for (const n of wb.names) names.push(nameEl(n.name, n.formula, n.sheet, n.hidden, n.comment));
+  for (const n of wb.names) if (n.sheet === undefined || !/^_xlnm\.Print_(Area|Titles)$/i.test(n.name)) names.push(nameEl(n.name, n.formula, n.sheet, n.hidden, n.comment));
+  for (const n of o.slicers.definedNames()) if (!wb.names.some((d) => d.name.toLowerCase() === n.name.toLowerCase())) names.push(nameEl(n.name, n.formula));
   sheets.forEach((s, i) => {
     const q = quoteSheet(s.name);
     if (s.autoFilter) names.push(nameEl('_xlnm._FilterDatabase', `${q}!${rangeAddr(s.autoFilter.range).replace(/([A-Z]+)(\d+)/g, '$$$1$$$2')}`, i, true));
@@ -410,16 +480,24 @@ export const writeXlsx = (wb: Workbook): Uint8Array => {
       const pa = s.pageSetup.printArea.split(',').map((p) => `${q}!${p.trim().replace(/\$?([A-Z]+)\$?(\d+)/g, '$$$1$$$2')}`).join(',');
       names.push(nameEl('_xlnm.Print_Area', pa, i));
     }
+    const titles = printTitlesFormula(q, s.pageSetup);
+    if (titles) names.push(nameEl('_xlnm.Print_Titles', titles, i));
   });
 
   const activeTab = Math.max(0, Math.min(wb.activeSheet, sheets.length - 1));
   const calc = wb.calc ?? {};
+  const pivotCachesXml = o.pivots.workbookParts((t, target) => wbRels.add(t, target));
+  const wbExt = o.slicers.workbookParts((t, target) => wbRels.add(t, target));
   const wbXml = `${XML_HEAD}<workbook xmlns="${NS_MAIN}" xmlns:r="${NS_R}">`
     + el('workbookPr', { date1904: wb.date1904 || undefined, defaultThemeVersion: 166925 })
+    + workbookProtectionXml(wb)
     + `<bookViews>${el('workbookView', { xWindow: 0, yWindow: 0, windowWidth: 28800, windowHeight: 12300, activeTab: activeTab || undefined })}</bookViews>`
     + `<sheets>${sheetEls.join('')}</sheets>`
     + (names.length ? `<definedNames>${names.join('')}</definedNames>` : '')
-    + el('calcPr', { calcId: 191029, calcMode: calc.manual ? 'manual' : undefined, iterate: calc.iterate || undefined, iterateCount: calc.maxIterations, iterateDelta: calc.maxChange, fullCalcOnLoad: true })
+    + el('calcPr', { calcId: 191029, calcMode: calc.manual ? 'manual' : calc.autoNoTable ? 'autoNoTable' : undefined, fullPrecision: calc.precisionAsDisplayed ? false : undefined, refMode: calc.r1c1 ? 'R1C1' : undefined, iterate: calc.iterate || undefined, iterateCount: calc.maxIterations, iterateDelta: calc.maxChange, fullCalcOnLoad: true })
+    + customWorkbookViewsXml(wb)
+    + pivotCachesXml
+    + (wbExt ? `<extLst>${wbExt}</extLst>` : '')
     + '</workbook>';
 
   put(o, 'xl/styles.xml', o.styles.xml(), CT + 'spreadsheetml.styles+xml');
@@ -430,6 +508,11 @@ export const writeXlsx = (wb: Workbook): Uint8Array => {
   if (objects) {
     put(o, OBJECTS_PATH, objects, OBJECTS_CT);
     wbRels.add(OBJECTS_REL, OBJECTS_PATH.replace(/^xl\//, ''));
+  }
+  const workspace = workspacePart(wb);
+  if (workspace) {
+    put(o, WORKSPACE_PATH, workspace, WORKSPACE_CT);
+    wbRels.add(WORKSPACE_REL, WORKSPACE_PATH.replace(/^xl\//, ''));
   }
   if (o.sst.items.length) {
     put(o, 'xl/sharedStrings.xml', o.sst.xml(), CT + 'spreadsheetml.sharedStrings+xml');

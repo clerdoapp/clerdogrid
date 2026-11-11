@@ -1,0 +1,5 @@
+.region-panel { display: flex; flex-direction: column; gap: 8px; padding: 2px 0; }
+.region-sample { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin: 0; font-size: 12px; }
+.region-sample dt { color: var(--muted); }
+.region-sample dd { margin: 0; overflow-wrap: anywhere; }
+.region-sample code { font-size: 12px; }

@@ -1,6 +1,10 @@
 import { useEffect, useState, type MutableRefObject, type RefObject } from 'react';
 import { catalogByName, searchCatalog, type FnInfo } from '../engine/catalog';
 import type { GridStore } from '../app/store';
+import { formulaListSep } from '../app/locale';
+
+/** File > Options: function autocomplete and argument tips. */
+export const assistPrefs = { autocomplete: true, tips: true };
 
 interface Context { token: string; tokenStart: number; call?: { name: string; arg: number } }
 
@@ -14,7 +18,8 @@ export const formulaContext = (text: string, caret: number): Context | null => {
   const tok = /([A-Za-z_][A-Za-z0-9_.]*)$/.exec(before);
   const prev = tok ? before.slice(0, before.length - tok[1]!.length) : before;
   const token = tok && /[=(,+\-*/^&<>:;{\s]$/.test(prev) && !/\$$/.test(prev) ? tok[1]! : '';
-  // Walk back to find the open call.
+  // Walk back to find the open call. Arguments are split by the region's separator.
+  const sep = formulaListSep();
   const stack: { name: string; arg: number }[] = [];
   let i = 1, q = false;
   while (i < before.length) {
@@ -25,7 +30,7 @@ export const formulaContext = (text: string, caret: number): Context | null => {
         const m = /([A-Za-z_][A-Za-z0-9_.]*)\s*$/.exec(before.slice(0, i));
         stack.push({ name: m ? m[1]!.toUpperCase() : '', arg: 0 });
       } else if (ch === ')') stack.pop();
-      else if (ch === ',' && stack.length) stack[stack.length - 1]!.arg++;
+      else if (ch === sep && stack.length) stack[stack.length - 1]!.arg++;
       else if (ch === '{') stack.push({ name: '{', arg: 0 });
       else if (ch === '}') stack.pop();
     }
@@ -43,7 +48,7 @@ export const Signature = ({ info, arg }: { info: FnInfo; arg: number }) => {
     <span className="sig">
       <b>{info.name}</b>(
       {args.map((a, i) => (
-        <span key={i}>{i ? ', ' : ''}<span className={i === current ? 'cur' : ''}>{a.optional ? `[${a.name}]` : a.name}</span></span>
+        <span key={i}>{i ? `${formulaListSep()} ` : ''}<span className={i === current ? 'cur' : ''}>{a.optional ? `[${a.name}]` : a.name}</span></span>
       ))}
       {repeatFrom >= 0 ? ', …' : ''})
     </span>
@@ -69,9 +74,9 @@ export const FormulaAssist = ({ store, anchor, input, keyRef }: {
     return () => { el.removeEventListener('keyup', upd); el.removeEventListener('click', upd); el.removeEventListener('input', upd); };
   }, [input, text]);
   const ctx = formulaContext(text, Math.min(caret, text.length));
-  const matches = ctx?.token && closed !== `${ctx.tokenStart}:${ctx.token}` ? searchCatalog(ctx.token, 12).filter((f) => f.name.startsWith(ctx.token.toUpperCase())) : [];
-  const names = ctx?.token ? store.wb.names.filter((n) => n.name.toLowerCase().startsWith(ctx.token.toLowerCase())).slice(0, 5) : [];
-  const call = ctx?.call ? catalogByName(ctx.call.name) : undefined;
+  const matches = assistPrefs.autocomplete && ctx?.token && closed !== `${ctx.tokenStart}:${ctx.token}` ? searchCatalog(ctx.token, 12).filter((f) => f.name.startsWith(ctx.token.toUpperCase())) : [];
+  const names = assistPrefs.autocomplete && ctx?.token ? store.wb.names.filter((n) => n.name.toLowerCase().startsWith(ctx.token.toLowerCase())).slice(0, 5) : [];
+  const call = assistPrefs.tips && ctx?.call ? catalogByName(ctx.call.name) : undefined;
   const sel = Math.min(pick, Math.max(0, matches.length + names.length - 1));
   useEffect(() => setPick(0), [ctx?.token]);
 

@@ -3,6 +3,7 @@ import { ArrowDownAZ, ArrowUpAZ, FilterX } from 'lucide-react';
 import { filterValues, setFilterColumn, sortRange } from '../app/ops/data';
 import type { CfOperator } from '../model/workbook';
 import type { GridStore } from '../app/store';
+import { T, Tr } from './i18n';
 
 /** Is there a filter (or table header) button at this cell? */
 export const filterPopupFor = (store: GridStore, row: number, col: number): boolean => {
@@ -35,24 +36,24 @@ export const FilterPopup = ({ store, col, x, y, onClose }: { store: GridStore; c
     onClose();
   };
   return (
-    <div className="popup filterpop" style={{ left: Math.max(4, x), top: y }} role="dialog" aria-label="Filter" onPointerDown={(e) => e.stopPropagation()}
+    <div className="popup filterpop" style={{ left: Math.max(4, x), top: y }} role="dialog" aria-label={T('Filter')} onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => { if (e.key === 'Escape') onClose(); if (e.key === 'Enter') apply(); }}>
-      <button className="tool" onClick={() => sort(false)}><ArrowDownAZ size={15} strokeWidth={1.9} /> Sort smallest to largest</button>
-      <button className="tool" onClick={() => sort(true)}><ArrowUpAZ size={15} strokeWidth={1.9} /> Sort largest to smallest</button>
-      <button className="tool" disabled={!current} onClick={() => { setFilterColumn(store, null, col); onClose(); }}><FilterX size={15} strokeWidth={1.9} /> Clear filter</button>
+      <button className="tool" onClick={() => sort(false)}><ArrowDownAZ size={15} strokeWidth={1.9} />{' '}{T('Sort smallest to largest')}</button>
+      <button className="tool" onClick={() => sort(true)}><ArrowUpAZ size={15} strokeWidth={1.9} />{' '}{T('Sort largest to smallest')}</button>
+      <button className="tool" disabled={!current} onClick={() => { setFilterColumn(store, null, col); onClose(); }}><FilterX size={15} strokeWidth={1.9} />{' '}{T('Clear filter')}</button>
       <div className="sep" />
       <div className="row2">
-        <select value={op} onChange={(e) => setOp(e.target.value as CfOperator)} aria-label="Condition">{OPS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-        <input value={opVal} onChange={(e) => setOpVal(e.target.value)} placeholder="Value (* and ? work)" aria-label="Condition value" />
+        <select value={op} onChange={(e) => setOp(e.target.value as CfOperator)} aria-label={T('Condition')}>{OPS.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select>
+        <input value={opVal} onChange={(e) => setOpVal(e.target.value)} placeholder={T('Value (* and ? work)')} aria-label={T('Condition value')} />
       </div>
-      <input className="search" autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search" aria-label="Search values" />
+      <input className="search" autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={T('Search')} aria-label={T('Search values')} />
       <div className="checklist">
-        <label><input type="checkbox" checked={all} onChange={() => { const n = new Set(checked); for (const v of shown) { if (all) n.delete(v.text); else n.add(v.text); } setChecked(n); }} /> (Select all)</label>
+        <label><input type="checkbox" checked={all} onChange={() => { const n = new Set(checked); for (const v of shown) { if (all) n.delete(v.text); else n.add(v.text); } setChecked(n); }} />{' '}{T('(Select all)')}</label>
         {shown.slice(0, 2000).map((v) => (
-          <label key={v.text}><input type="checkbox" checked={checked.has(v.text)} onChange={() => { const n = new Set(checked); if (n.has(v.text)) n.delete(v.text); else n.add(v.text); setChecked(n); }} /> {v.text === '' ? '(Blanks)' : v.text} <span className="muted">{v.count}</span></label>
+          <label key={v.text}><input type="checkbox" checked={checked.has(v.text)} onChange={() => { const n = new Set(checked); if (n.has(v.text)) n.delete(v.text); else n.add(v.text); setChecked(n); }} /> {v.text === '' ? T('(Blanks)') : v.text} <span className="muted">{v.count}</span></label>
         ))}
       </div>
-      <div className="actions"><button onClick={onClose}>Cancel</button><button className="primary" onClick={apply}>OK</button></div>
+      <div className="actions"><button onClick={onClose}>{T('Cancel')}</button><button className="primary" onClick={apply}>{T('OK')}</button></div>
     </div>
   );
 };

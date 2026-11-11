@@ -8,11 +8,14 @@ export const pxToChars = (px: number): number => Math.max(0, Math.round(((px - 5
 export const rowPx = (pt: number): number => Math.round((pt * 4) / 3);
 export const pxToPt = (px: number): number => Math.round(px * 0.75 * 4) / 4;
 
+/** Positions along one axis (rows or columns). */
+export interface LayoutAxis { start(i: number): number; size(i: number): number; at(px: number): number; readonly total: number }
+
 /**
  * Pixel positions of rows and columns. Sizes are stored only up to the last customised index;
  * beyond that every size is the default, so a million rows cost nothing.
  */
-class Axis {
+class Axis implements LayoutAxis {
   private offsets: Float64Array;
   private readonly last: number;
   constructor(private readonly count: number, private readonly dflt: number, sizes: Map<number, number>) {
@@ -55,8 +58,8 @@ const autoHeights = (s: Sheet, styles: CellStyle[]): Map<number, number> => {
 };
 
 export class SheetLayout {
-  readonly rows: Axis;
-  readonly cols: Axis;
+  readonly rows: LayoutAxis;
+  readonly cols: LayoutAxis;
   constructor(s: Sheet, styles: CellStyle[] = []) {
     const rowSizes = new Map<number, number>();
     for (const [i, pt] of autoHeights(s, styles)) rowSizes.set(i, rowPx(pt));

@@ -7,9 +7,11 @@ import { guessTotals } from '../../charts/chartStats';
 import { CHART_GROUPS, CHART_TYPES, chartGroup, chartLabel, comboKind, hasAxes, supportsSecondary, traits, type ChartGroup } from '../../charts/chartTypes';
 import { ChartSvg } from '../../charts/ChartSvg';
 import { selectChart } from '../../charts/ChartView';
+import { applyTemplate, deleteTemplate, loadTemplates, type ChartTemplate } from '../../charts/chartOps';
 import '../../charts/charts.css';
 import { Dialog, Field, type DialogProps } from '../Dialog';
 import { clipToUsed, rangeText, readMatrix, resolveRange, type SheetRange } from './util';
+import { N, T, Tr } from '../../i18n';
 
 export { CHART_TYPES };
 
@@ -44,7 +46,7 @@ const defaultTitle = (store: GridStore, chart: Chart): string | undefined => {
 const hasNumbers = (store: GridStore, chart: Chart): boolean => resolveChart(store, chart).series.some((s) => s.values.some((v) => v !== null));
 
 const insert = (store: GridStore, chart: Chart): void => {
-  store.change('Insert chart', 'sheet', () => { store.sheet.charts.push(chart); });
+  store.change(N('Insert chart'), 'sheet', () => { store.sheet.charts.push(chart); });
   selectChart(store, chart.id);
 };
 
@@ -64,7 +66,7 @@ const normalizeSeries = (type: ChartType, series: ChartSeries[]): ChartSeries[] 
 export const quickChart = (store: GridStore, type: ChartType): boolean => {
   const source = sourceFromSelection(store);
   const chart = draftChart(store, { type, source });
-  if (!chart || !hasNumbers(store, chart)) { store.notify('Select a block of cells with numbers to make a chart.'); return false; }
+  if (!chart || !hasNumbers(store, chart)) { store.notify(T('Select a block of cells with numbers to make a chart.')); return false; }
   chart.series = normalizeSeries(type, chart.series);
   chart.title = defaultTitle(store, chart);
   insert(store, chart);
@@ -86,7 +88,7 @@ export const ChartDialog = ({ store, data, close }: DialogProps<{ type?: ChartTy
 };
 
 const NUM_FORMATS: { code: string; label: string }[] = [
-  { code: '', label: 'Same as data' }, { code: 'General', label: 'General' }, { code: '#,##0', label: '1,234' }, { code: '#,##0.00', label: '1,234.56' },
+  { code: '', label: N('Same as data') }, { code: N('General'), label: N('General') }, { code: '#,##0', label: '1,234' }, { code: '#,##0.00', label: '1,234.56' },
   { code: '0%', label: '12%' }, { code: '0.0%', label: '12.3%' }, { code: '"$"#,##0', label: '$1,234' }, { code: '0.00E+00', label: '1.23E+03' },
 ];
 
@@ -145,7 +147,9 @@ const ChartEditor = ({ store, close, editing, initialType }: { store: GridStore;
   const [maxText, setMaxText] = useState(editing?.options?.max?.toString() ?? '');
   const [bins, setBins] = useState<'auto' | 'count' | 'width'>(editing?.options?.binWidth ? 'width' : editing?.options?.binCount ? 'count' : 'auto');
   const [binText, setBinText] = useState(String(editing?.options?.binWidth ?? editing?.options?.binCount ?? ''));
-  const [tab, setTab] = useState<'rec' | ChartGroup>(editing ? chartGroup(editing.type) : initialType ? chartGroup(initialType) : 'rec');
+  const [tab, setTab] = useState<'rec' | 'tpl' | ChartGroup>(editing ? chartGroup(editing.type) : initialType ? chartGroup(initialType) : 'rec');
+  const [templates, setTemplates] = useState<ChartTemplate[]>(() => (editing ? [] : loadTemplates()));
+  const [template, setTemplate] = useState<ChartTemplate | null>(null);
   const [part, setPart] = useState<'data' | 'format'>('data');
   // In edit mode keep the chart's own series until the data settings change.
   const [dataChanged, setDataChanged] = useState(!editing);
@@ -181,36 +185,50 @@ const ChartEditor = ({ store, close, editing, initialType }: { store: GridStore;
     if (editing && !dataChanged) return { ...editing, type };
     return draftChart(store, { type, source, orientation, headers: h }, editing);
   }, [editing, dataChanged, type, source, orientation, h.firstRow, h.firstCol, store]); // eslint-disable-line react-hooks/exhaustive-deps
-  const preview: Chart | null = base ? {
+  const plain: Chart | null = base ? {
     ...base, ...settings,
     series: normalizeSeries(type, base.series.map((s, i) => ({ ...s, color: colors[i], type: kinds[i] ?? (tr.combo ? comboKind(type, i, base.series.length) : undefined) }))),
   } : null;
+  const preview: Chart | null = plain && template && template.type === type ? applyTemplate(template, plain) : plain;
   const autoTitle = preview && !titleTouched ? defaultTitle(store, preview) : undefined;
   const shown = preview ? { ...preview, title: settings.title ?? autoTitle } : null;
   const resolved = shown ? resolveChart(store, shown, store.sheetIndex) : null;
 
-  const listed: ChartType[] = tab === 'rec' ? recs : CHART_TYPES.filter((t) => t.group === tab).map((t) => t.type);
+  const listed: ChartType[] = tab === 'rec' ? recs : tab === 'tpl' ? [] : CHART_TYPES.filter((t) => t.group === tab).map((t) => t.type);
   const thumbs = (
-    <div className="charttypes" role="listbox" aria-label="Chart types">
+    <div className="charttypes" role="listbox" aria-label={T('Chart types')}>
       {listed.map((t) => {
         const c = draftChart(store, { type: t, source, orientation, headers: h }) ?? (editing ? { ...editing, type: t } : null);
         return (
-          <button key={t} role="option" aria-selected={type === t} className={`charttype${type === t ? ' on' : ''}`} onClick={() => setType(t)}>
+          <button key={t} role="option" aria-selected={type === t && !template} className={`charttype${type === t && !template ? ' on' : ''}`} onClick={() => { setType(t); setTemplate(null); }}>
             <div className="thumb">{c && <ChartSvg chart={c} data={resolveChart(store, c)} width={120} height={64} thumb />}</div>
             {chartLabel(t)}
           </button>
         );
       })}
+      {tab === 'tpl' && templates.map((tp) => {
+        const c0 = draftChart(store, { type: tp.type, source, orientation, headers: h });
+        const c = c0 ? applyTemplate(tp, c0) : null;
+        return (
+          <div key={tp.id} className={`charttype${template?.id === tp.id ? ' on' : ''}`} role="option" aria-selected={template?.id === tp.id} tabIndex={0}
+            onClick={() => { setTemplate(tp); setType(tp.type); }} onKeyDown={(e) => { if (e.key === 'Enter') { setTemplate(tp); setType(tp.type); } }}>
+            <div className="thumb">{c && <ChartSvg chart={c} data={resolveChart(store, c)} width={120} height={64} thumb />}</div>
+            <span className="tplname">{tp.name}</span>
+            <button className="ico sm" title={T('Delete template')} aria-label={T('Delete template {name}', { name: tp.name })} onClick={(e) => { e.stopPropagation(); deleteTemplate(tp.id); setTemplates(loadTemplates()); if (template?.id === tp.id) setTemplate(null); }}>×</button>
+          </div>
+        );
+      })}
+      {tab === 'tpl' && !templates.length && <p className="muted small">{T('No templates yet. Format a chart, then choose Save as template in its format panel.')}</p>}
     </div>
   );
 
   const ok = (): boolean => {
-    if (!parsed) { store.notify('Enter a data range such as A1:D10.'); return false; }
-    if (!shown || !hasNumbers(store, shown)) { store.notify('The data range has no numbers to chart.'); return false; }
+    if (!parsed) { store.notify(T('Enter a data range such as A1:D10.')); return false; }
+    if (!shown || !hasNumbers(store, shown)) { store.notify(T('The data range has no numbers to chart.')); return false; }
     const finalChart: Chart = { ...shown, title: shown.title?.trim() || undefined };
     for (const k of ['legend', 'axisTitles', 'dataLabels', 'options'] as const) if (finalChart[k] === undefined) delete finalChart[k];
     if (editing) {
-      store.change('Edit chart', 'sheet', () => {
+      store.change(N('Edit chart'), 'sheet', () => {
         const i = store.sheet.charts.findIndex((c) => c.id === editing.id);
         if (i >= 0) store.sheet.charts[i] = finalChart;
       });
@@ -227,121 +245,122 @@ const ChartEditor = ({ store, close, editing, initialType }: { store: GridStore;
   const styleIdx = opts.style ?? 0;
 
   return (
-    <Dialog title={editing ? 'Edit chart' : 'Insert chart'} close={close} wide onOk={ok} okLabel={editing ? 'Save' : 'Insert'}>
-      <div className="chartgroups" role="tablist" aria-label="Chart groups">
-        <button role="tab" aria-selected={tab === 'rec'} className={tab === 'rec' ? 'on' : ''} onClick={() => setTab('rec')}>Suggested</button>
-        {CHART_GROUPS.map((g) => <button key={g} role="tab" aria-selected={tab === g} className={tab === g ? 'on' : ''} onClick={() => setTab(g)}>{g}</button>)}
+    <Dialog title={editing ? T('Edit chart') : T('Insert chart')} close={close} wide onOk={ok} okLabel={editing ? T('Save') : T('Insert')}>
+      <div className="chartgroups" role="tablist" aria-label={T('Chart groups')}>
+        <button role="tab" aria-selected={tab === 'rec'} className={tab === 'rec' ? 'on' : ''} onClick={() => setTab('rec')}>{T('Recommended')}</button>
+        {!editing && <button role="tab" aria-selected={tab === 'tpl'} className={tab === 'tpl' ? 'on' : ''} onClick={() => setTab('tpl')}>{T('Templates')}</button>}
+        {CHART_GROUPS.map((g) => <button key={g} role="tab" aria-selected={tab === g} className={tab === g ? 'on' : ''} onClick={() => setTab(g)}>{Tr(g)}</button>)}
       </div>
       {thumbs}
       <div className="chartdlg">
         <div className="chartpreview">
-          {shown && resolved ? <ChartSvg chart={shown} data={resolved} width={460} height={230} /> : <p className="muted pad">Choose a range with numbers to see a preview.</p>}
+          {shown && resolved ? <ChartSvg chart={shown} data={resolved} width={460} height={230} /> : <p className="muted pad">{T('Choose a range with numbers to see a preview.')}</p>}
         </div>
         <div className="listbox">
-          <div className="segmented" role="tablist" aria-label="Settings">
-            <button role="tab" aria-selected={part === 'data'} className={part === 'data' ? 'on' : ''} onClick={() => setPart('data')}>Data</button>
-            <button role="tab" aria-selected={part === 'format'} className={part === 'format' ? 'on' : ''} onClick={() => setPart('format')}>Look</button>
+          <div className="segmented" role="tablist" aria-label={T('Settings')}>
+            <button role="tab" aria-selected={part === 'data'} className={part === 'data' ? 'on' : ''} onClick={() => setPart('data')}>{T('Data')}</button>
+            <button role="tab" aria-selected={part === 'format'} className={part === 'format' ? 'on' : ''} onClick={() => setPart('format')}>{T('Look')}</button>
           </div>
           {part === 'data' ? <>
-            <Field label="Data range">
+            <Field label={T('Data range')}>
               <input value={rangeInput} onChange={(e) => { setRangeInput(e.target.value); markData(); }} placeholder="A1:D10" aria-invalid={!parsed} spellCheck={false} />
             </Field>
             {tr.family !== 'treemap' && tr.family !== 'sunburst' && <div className="checkrow">
-              <span className="muted small">Series in</span>
-              <div className="segmented" role="radiogroup" aria-label="Series in">
+              <span className="muted small">{T('Series in')}</span>
+              <div className="segmented" role="radiogroup" aria-label={T('Series in')}>
                 {(['cols', 'rows'] as const).map((o) => {
                   const on = (orientation ?? (editing && !dataChanged ? chartOrientation(editing) : undefined) ?? (matrix.length - (h.firstRow ? 1 : 0) >= (matrix[0]?.length ?? 0) - (h.firstCol ? 1 : 0) ? 'cols' : 'rows')) === o;
-                  return <button key={o} role="radio" aria-checked={on} className={on ? 'on' : ''} onClick={() => { setOrientation(o); markData(); }}>{o === 'cols' ? 'Columns' : 'Rows'}</button>;
+                  return <button key={o} role="radio" aria-checked={on} className={on ? 'on' : ''} onClick={() => { setOrientation(o); markData(); }}>{o === 'cols' ? T('Columns') : T('Rows')}</button>;
                 })}
               </div>
             </div>}
-            <label className="checkrow"><input type="checkbox" checked={h.firstRow} onChange={(e) => { setHeaders({ ...h, firstRow: e.target.checked }); markData(); }} /> First row has names</label>
-            <label className="checkrow"><input type="checkbox" checked={h.firstCol} onChange={(e) => { setHeaders({ ...h, firstCol: e.target.checked }); markData(); }} /> First column has labels</label>
-            {tr.family === 'bubble' && <p className="muted small">Columns after the x values come in pairs: y values, then bubble sizes.</p>}
-            {(tr.family === 'treemap' || tr.family === 'sunburst') && <p className="muted small">Text columns on the left are the levels, outer level first. The last column holds the values.</p>}
+            <label className="checkrow"><input type="checkbox" checked={h.firstRow} onChange={(e) => { setHeaders({ ...h, firstRow: e.target.checked }); markData(); }} />{' '}{T('First row has names')}</label>
+            <label className="checkrow"><input type="checkbox" checked={h.firstCol} onChange={(e) => { setHeaders({ ...h, firstCol: e.target.checked }); markData(); }} />{' '}{T('First column has labels')}</label>
+            {tr.family === 'bubble' && <p className="muted small">{T('Columns after the x values come in pairs: y values, then bubble sizes.')}</p>}
+            {(tr.family === 'treemap' || tr.family === 'sunburst') && <p className="muted small">{T('Text columns on the left are the levels, outer level first. The last column holds the values.')}</p>}
             {tr.family === 'histogram' && <>
-              <Field label="Bins">
+              <Field label={T('Bins')}>
                 <select value={bins} onChange={(e) => setBins(e.target.value as typeof bins)}>
-                  <option value="auto">Automatic</option><option value="count">Number of bins</option><option value="width">Bin width</option>
+                  <option value="auto">{T('Automatic')}</option><option value="count">{T('Number of bins')}</option><option value="width">{T('Bin width')}</option>
                 </select>
               </Field>
-              {bins !== 'auto' && <Field label={bins === 'count' ? 'Number of bins' : 'Bin width'}><input inputMode="decimal" value={binText} onChange={(e) => setBinText(e.target.value)} /></Field>}
+              {bins !== 'auto' && <Field label={bins === 'count' ? T('Number of bins') : T('Bin width')}><input inputMode="decimal" value={binText} onChange={(e) => setBinText(e.target.value)} /></Field>}
             </>}
             {tr.family === 'box' && <>
-              <label className="checkrow"><input type="checkbox" checked={!opts.hideMean} onChange={(e) => setOpt('hideMean', e.target.checked ? undefined : true)} /> Show mean marker</label>
-              <label className="checkrow"><input type="checkbox" checked={!opts.hideOutliers} onChange={(e) => setOpt('hideOutliers', e.target.checked ? undefined : true)} /> Show outliers</label>
+              <label className="checkrow"><input type="checkbox" checked={!opts.hideMean} onChange={(e) => setOpt('hideMean', e.target.checked ? undefined : true)} />{' '}{T('Show mean marker')}</label>
+              <label className="checkrow"><input type="checkbox" checked={!opts.hideOutliers} onChange={(e) => setOpt('hideOutliers', e.target.checked ? undefined : true)} />{' '}{T('Show outliers')}</label>
             </>}
             {tr.family === 'waterfall' && resolved && <>
-              <span className="seclabel">Total bars</span>
+              <span className="seclabel">{T('Total bars')}</span>
               <div className="checks">
                 {resolved.categories.map((c, i) => {
                   const list = opts.totals ?? guessTotals(resolved.categories);
-                  return <label key={i}><input type="checkbox" checked={list.includes(i)} onChange={(e) => setOpt('totals', e.target.checked ? [...list, i].sort((a, b) => a - b) : list.filter((x) => x !== i))} /> {c || `Point ${i + 1}`}</label>;
+                  return <label key={i}><input type="checkbox" checked={list.includes(i)} onChange={(e) => setOpt('totals', e.target.checked ? [...list, i].sort((a, b) => a - b) : list.filter((x) => x !== i))} /> {c || T('Point {p0}', { p0: i + 1 })}</label>;
                 })}
               </div>
             </>}
           </> : <>
-            <span className="seclabel">Colours</span>
-            <div className="stylepick" role="radiogroup" aria-label="Colours">
+            <span className="seclabel">{T('Colours')}</span>
+            <div className="stylepick" role="radiogroup" aria-label={T('Colours')}>
               {Array.from({ length: STYLE_COUNT }, (_, k) => (
                 <button key={k} role="radio" aria-checked={styleIdx === k} className={styleIdx === k ? 'on' : ''} onClick={() => { setOpt('style', k || undefined); setColors([]); }}>
                   <span className="swatches">{Array.from({ length: 5 }, (_, i) => <i key={i} style={{ background: seriesColor(i, undefined, k) }} />)}</span>
-                  {STYLE_NAMES[k]}
+                  {Tr(STYLE_NAMES[k])}
                 </button>
               ))}
             </div>
             {perSeries && resolved.series.length > 0 && <>
-              <span className="seclabel">Series</span>
+              <span className="seclabel">{T('Series')}</span>
               {resolved.series.map((s, i) => (
                 <div key={i} className="seriesrow">
-                  <input type="color" aria-label={`Colour of ${s.name}`} value={toHex(s.color)} onChange={(e) => setColors((c) => { const n = [...c]; n[i] = e.target.value.toUpperCase(); return n; })} />
+                  <input type="color" aria-label={T('Colour of {name}', { name: s.name })} value={toHex(s.color)} onChange={(e) => setColors((c) => { const n = [...c]; n[i] = e.target.value.toUpperCase(); return n; })} />
                   <span title={s.name}>{s.name}</span>
                   {tr.combo ? (
-                    <select aria-label={`How ${s.name} is drawn`} value={s.type} onChange={(e) => setKinds((k) => { const n = [...k]; n[i] = e.target.value as ChartSeries['type']; return n; })}>
-                      <option value="column">Column</option><option value="line">Line</option><option value="area">Area</option>
+                    <select aria-label={T('How {name} is drawn', { name: s.name })} value={s.type} onChange={(e) => setKinds((k) => { const n = [...k]; n[i] = e.target.value as ChartSeries['type']; return n; })}>
+                      <option value="column">{T('Column')}</option><option value="line">{T('Line')}</option><option value="area">{T('Area')}</option>
                     </select>
                   ) : <span />}
                   {(supportsSecondary(type) || tr.combo) && resolved.series.length > 1 ? (
-                    <label className="checkrow small"><input type="checkbox" checked={sec.has(i)} onChange={(e) => setOpt('secondary', e.target.checked ? [...sec, i].sort((a, b) => a - b) : [...sec].filter((x) => x !== i))} /> Right axis</label>
+                    <label className="checkrow small"><input type="checkbox" checked={sec.has(i)} onChange={(e) => setOpt('secondary', e.target.checked ? [...sec, i].sort((a, b) => a - b) : [...sec].filter((x) => x !== i))} />{' '}{T('Right axis')}</label>
                   ) : <span />}
                 </div>
               ))}
-              {colors.some(Boolean) && <button className="tool small" onClick={() => setColors([])}>Use set colours</button>}
+              {colors.some(Boolean) && <button className="tool small" onClick={() => setColors([])}>{T('Use set colours')}</button>}
             </>}
           </>}
         </div>
       </div>
       <div className="grid2">
-        <Field label="Title"><input value={title} placeholder={autoTitle ?? 'Chart title'} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} /></Field>
-        <Field label="Legend">
+        <Field label={T('Title')}><input value={title} placeholder={autoTitle ?? T('Chart title')} onChange={(e) => { setTitle(e.target.value); setTitleTouched(true); }} /></Field>
+        <Field label={T('Legend')}>
           <select value={legend} onChange={(e) => setLegend(e.target.value as typeof legend)}>
-            <option value="auto">Automatic</option><option value="bottom">Bottom</option><option value="top">Top</option>
-            <option value="right">Right</option><option value="left">Left</option><option value="none">None</option>
+            <option value="auto">{T('Automatic')}</option><option value="bottom">{T('Bottom')}</option><option value="top">{T('Top')}</option>
+            <option value="right">{T('Right')}</option><option value="left">{T('Left')}</option><option value="none">{T('None')}</option>
           </select>
         </Field>
         {xyAxes && <>
-          <Field label={tr.horizontal ? 'Vertical axis title' : 'Horizontal axis title'}><input value={xTitle} onChange={(e) => setXTitle(e.target.value)} /></Field>
-          <Field label={tr.horizontal ? 'Horizontal axis title' : 'Vertical axis title'}><input value={yTitle} onChange={(e) => setYTitle(e.target.value)} /></Field>
-          {sec.size > 0 && <Field label="Right axis title"><input value={y2Title} onChange={(e) => setY2Title(e.target.value)} /></Field>}
+          <Field label={tr.horizontal ? T('Vertical axis title') : T('Horizontal axis title')}><input value={xTitle} onChange={(e) => setXTitle(e.target.value)} /></Field>
+          <Field label={tr.horizontal ? T('Horizontal axis title') : T('Vertical axis title')}><input value={yTitle} onChange={(e) => setYTitle(e.target.value)} /></Field>
+          {sec.size > 0 && <Field label={T('Right axis title')}><input value={y2Title} onChange={(e) => setY2Title(e.target.value)} /></Field>}
         </>}
         {axes && tr.family !== 'histogram' && tr.family !== 'pareto' && <>
-          <Field label="Axis minimum"><input inputMode="decimal" value={minText} placeholder="Automatic" onChange={(e) => setMinText(e.target.value)} /></Field>
-          <Field label="Axis maximum"><input inputMode="decimal" value={maxText} placeholder="Automatic" onChange={(e) => setMaxText(e.target.value)} /></Field>
+          <Field label={T('Axis minimum')}><input inputMode="decimal" value={minText} placeholder={T('Automatic')} onChange={(e) => setMinText(e.target.value)} /></Field>
+          <Field label={T('Axis maximum')}><input inputMode="decimal" value={maxText} placeholder={T('Automatic')} onChange={(e) => setMaxText(e.target.value)} /></Field>
         </>}
-        {tr.family !== 'histogram' && <Field label="Number format">
+        {tr.family !== 'histogram' && <Field label={T('Number format')}>
           <select value={opts.numFmt ?? ''} onChange={(e) => setOpt('numFmt', e.target.value || undefined)}>
-            {NUM_FORMATS.map((f) => <option key={f.code} value={f.code}>{f.label}</option>)}
+            {NUM_FORMATS.map((f) => <option key={f.code} value={f.code}>{Tr(f.label)}</option>)}
           </select>
         </Field>}
-        {labelModes && <Field label="Labels show">
+        {labelModes && <Field label={T('Labels show')}>
           <select value={opts.labelMode ?? (tr.family === 'pie' ? 'percent' : 'value')} onChange={(e) => setOpt('labelMode', e.target.value as ChartOptions['labelMode'])}>
-            <option value="value">Values</option><option value="percent">Percent</option><option value="both">Values and percent</option>
+            <option value="value">{T('Values')}</option><option value="percent">{T('Percent')}</option><option value="both">{T('Values and percent')}</option>
           </select>
         </Field>}
       </div>
       <div className="checkrow" style={{ gap: 18, flexWrap: 'wrap' }}>
-        <label className="checkrow"><input type="checkbox" checked={labels ?? labelsOnByDefault(type)} onChange={(e) => setLabels(e.target.checked)} /> Show values on the chart</label>
-        {axes && <label className="checkrow"><input type="checkbox" checked={opts.gridlines !== false} onChange={(e) => setOpt('gridlines', e.target.checked ? undefined : false)} /> Gridlines</label>}
+        <label className="checkrow"><input type="checkbox" checked={labels ?? labelsOnByDefault(type)} onChange={(e) => setLabels(e.target.checked)} />{' '}{T('Show values on the chart')}</label>
+        {axes && <label className="checkrow"><input type="checkbox" checked={opts.gridlines !== false} onChange={(e) => setOpt('gridlines', e.target.checked ? undefined : false)} />{' '}{T('Gridlines')}</label>}
       </div>
     </Dialog>
   );

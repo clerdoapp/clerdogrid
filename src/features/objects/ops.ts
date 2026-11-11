@@ -3,9 +3,10 @@ import { MAX_COLS, MAX_ROWS } from '../../engine/types';
 import { cellKey, keyCol, keyRow, type CellRange, type CommentThread, type InkStroke, type Shape, type ShapeKind } from '../../model/workbook';
 import { editRangeKey, inRange, type GridStore } from '../../app/store';
 import { protectionHash } from '../../app/protection';
+import { N, T } from '../../ui/i18n';
 
 export const currentUser = (): string => {
-  try { return localStorage.getItem('clerdogrid.user')?.trim() || 'You'; } catch { return 'You'; }
+  try { return localStorage.getItem('clerdogrid.user')?.trim() || T('You'); } catch { return T('You'); }
 };
 const now = (): string => new Date().toISOString();
 let seq = 0;
@@ -26,7 +27,7 @@ const editThread = (s: GridStore, label: string, row: number, col: number, fn: (
 export const addComment = (s: GridStore, row: number, col: number, text: string, author = currentUser()): void => {
   const t = text.trim();
   if (!t) return;
-  editThread(s, 'New comment', row, col, (cur, map) => {
+  editThread(s, N('New comment'), row, col, (cur, map) => {
     if (cur) cur.replies.push({ author, text: t, time: now() });
     else map.set(cellKey(row, col), { id: newId('c'), author, text: t, time: now(), replies: [] });
   });
@@ -35,14 +36,14 @@ export const addComment = (s: GridStore, row: number, col: number, text: string,
 export const replyComment = (s: GridStore, row: number, col: number, text: string, author = currentUser()): void => {
   const t = text.trim();
   if (!t || !threadAt(s, row, col)) return;
-  editThread(s, 'Reply', row, col, (cur) => { cur!.replies.push({ author, text: t, time: now() }); cur!.resolved = undefined; });
+  editThread(s, N('Reply'), row, col, (cur) => { cur!.replies.push({ author, text: t, time: now() }); cur!.resolved = undefined; });
 };
 
 /** Edits the first message (index -1) or a reply. */
 export const editComment = (s: GridStore, row: number, col: number, index: number, text: string): void => {
   const t = text.trim();
   if (!t || !threadAt(s, row, col)) return;
-  editThread(s, 'Edit comment', row, col, (cur) => {
+  editThread(s, N('Edit comment'), row, col, (cur) => {
     if (index < 0) cur!.text = t; else if (cur!.replies[index]) cur!.replies[index]!.text = t;
   });
 };
@@ -50,14 +51,14 @@ export const editComment = (s: GridStore, row: number, col: number, index: numbe
 /** Deletes a reply, or the whole thread when index is -1. */
 export const deleteComment = (s: GridStore, row: number, col: number, index = -1): void => {
   if (!threadAt(s, row, col)) return;
-  editThread(s, index < 0 ? 'Delete comment' : 'Delete reply', row, col, (cur, map) => {
+  editThread(s, index < 0 ? N('Delete comment') : N('Delete reply'), row, col, (cur, map) => {
     if (index < 0) map.delete(cellKey(row, col)); else cur!.replies.splice(index, 1);
   });
 };
 
 export const resolveComment = (s: GridStore, row: number, col: number, resolved: boolean): void => {
   if (!threadAt(s, row, col)) return;
-  editThread(s, resolved ? 'Resolve comment' : 'Reopen comment', row, col, (cur) => { cur!.resolved = resolved || undefined; });
+  editThread(s, resolved ? N('Resolve comment') : N('Reopen comment'), row, col, (cur) => { cur!.resolved = resolved || undefined; });
 };
 
 /** Cells with a thread (or note), in reading order. */
@@ -79,7 +80,7 @@ export const stepTo = (s: GridStore, keys: Iterable<number>, dir: 1 | -1): { row
 export const deleteNote = (s: GridStore): void => {
   const keys = [...s.sheet.notes.keys()].filter((k) => s.sel.ranges.some((r) => inRange(r, keyRow(k), keyCol(k))));
   if (!keys.length) return;
-  s.change('Delete note', 'sheet', () => { for (const k of keys) s.sheet.notes.delete(k); });
+  s.change(N('Delete note'), 'sheet', () => { for (const k of keys) s.sheet.notes.delete(k); });
 };
 
 // ---------- Checkboxes ----------
@@ -97,9 +98,9 @@ export const isCheckbox = (s: GridStore, row: number, col: number): boolean => !
 
 export const insertCheckboxes = (s: GridStore): void => {
   const areas = clipped(s);
-  if (!areas.length) { s.notify('Select fewer cells.'); return; }
-  if (areas.some((r) => { for (let row = r.r1; row <= r.r2; row++) for (let col = r.c1; col <= r.c2; col++) if (s.isLocked(row, col)) return true; return false; })) { s.notify('These cells are protected.'); return; }
-  s.change('Checkbox', areas.map((area) => ({ area })), () => {
+  if (!areas.length) { s.notify(T('Select fewer cells.')); return; }
+  if (areas.some((r) => { for (let row = r.r1; row <= r.r2; row++) for (let col = r.c1; col <= r.c2; col++) if (s.isLocked(row, col)) return true; return false; })) { s.notify(T('These cells are protected.')); return; }
+  s.change(N('Checkbox'), areas.map((area) => ({ area })), () => {
     for (const r of areas) {
       s.styleRange(r, (st) => ({ ...st, checkbox: true }));
       for (let row = r.r1; row <= r.r2; row++) for (let col = r.c1; col <= r.c2; col++) {
@@ -112,7 +113,7 @@ export const insertCheckboxes = (s: GridStore): void => {
 
 export const removeCheckboxes = (s: GridStore): void => {
   const areas = clipped(s);
-  s.change('Remove checkboxes', areas.map((area) => ({ area })), () => {
+  s.change(N('Remove checkboxes'), areas.map((area) => ({ area })), () => {
     for (const r of areas) s.styleRange(r, (st) => { const { checkbox: _drop, ...rest } = st; void _drop; return rest; });
   });
 };
@@ -128,7 +129,7 @@ export const toggleCheckboxes = (s: GridStore, cells?: { row: number; col: numbe
   if (!targets.length) return false;
   const allOn = targets.every((p) => s.value(p.row, p.col) === true);
   const next = targets.length === 1 ? s.value(targets[0]!.row, targets[0]!.col) !== true : !allOn;
-  s.change('Checkbox', targets.map((p) => ({ area: { r1: p.row, c1: p.col, r2: p.row, c2: p.col } })), () => {
+  s.change(N('Checkbox'), targets.map((p) => ({ area: { r1: p.row, c1: p.col, r2: p.row, c2: p.col } })), () => {
     for (const p of targets) s.engine.setValue(s.sheetIndex, p.row, p.col, next);
   });
   return true;
@@ -137,10 +138,10 @@ export const toggleCheckboxes = (s: GridStore, cells?: { row: number; col: numbe
 // ---------- Shapes ----------
 
 export const SHAPE_KINDS: { kind: ShapeKind; label: string }[] = [
-  { kind: 'textBox', label: 'Text box' }, { kind: 'rect', label: 'Rectangle' }, { kind: 'roundRect', label: 'Rounded rectangle' }, { kind: 'ellipse', label: 'Oval' },
-  { kind: 'triangle', label: 'Triangle' }, { kind: 'diamond', label: 'Diamond' }, { kind: 'pentagon', label: 'Pentagon' }, { kind: 'hexagon', label: 'Hexagon' },
-  { kind: 'star5', label: 'Star' }, { kind: 'callout', label: 'Callout' }, { kind: 'rightArrow', label: 'Right arrow' }, { kind: 'leftArrow', label: 'Left arrow' },
-  { kind: 'upArrow', label: 'Up arrow' }, { kind: 'downArrow', label: 'Down arrow' }, { kind: 'line', label: 'Line' }, { kind: 'arrowLine', label: 'Arrow line' },
+  { kind: 'textBox', label: N('Text box') }, { kind: 'rect', label: N('Rectangle') }, { kind: 'roundRect', label: N('Rounded rectangle') }, { kind: 'ellipse', label: N('Oval') },
+  { kind: 'triangle', label: N('Triangle') }, { kind: 'diamond', label: N('Diamond') }, { kind: 'pentagon', label: N('Pentagon') }, { kind: 'hexagon', label: N('Hexagon') },
+  { kind: 'star5', label: N('Star') }, { kind: 'callout', label: N('Callout') }, { kind: 'rightArrow', label: N('Right arrow') }, { kind: 'leftArrow', label: N('Left arrow') },
+  { kind: 'upArrow', label: N('Up arrow') }, { kind: 'downArrow', label: N('Down arrow') }, { kind: 'line', label: N('Line') }, { kind: 'arrowLine', label: N('Arrow line') },
 ];
 
 export const defaultShape = (kind: ShapeKind, anchor: Shape['anchor']): Shape => {
@@ -150,10 +151,10 @@ export const defaultShape = (kind: ShapeKind, anchor: Shape['anchor']): Shape =>
 };
 
 export const addShape = (s: GridStore, shape: Shape): void => {
-  s.change('Insert shape', 'sheet', () => { (s.sheet.shapes ??= []).push(shape); });
+  s.change(N('Insert shape'), 'sheet', () => { (s.sheet.shapes ??= []).push(shape); });
 };
 
-export const updateShape = (s: GridStore, id: string, patch: Partial<Shape>, label = 'Format shape'): void => {
+export const updateShape = (s: GridStore, id: string, patch: Partial<Shape>, label = N('Format shape')): void => {
   if (!s.sheet.shapes?.some((x) => x.id === id)) return;
   s.change(label, 'sheet', () => {
     const sh = s.sheet.shapes!.find((x) => x.id === id)!;
@@ -164,7 +165,7 @@ export const updateShape = (s: GridStore, id: string, patch: Partial<Shape>, lab
 
 export const deleteShape = (s: GridStore, id: string): void => {
   if (!s.sheet.shapes?.some((x) => x.id === id)) return;
-  s.change('Delete shape', 'sheet', () => {
+  s.change(N('Delete shape'), 'sheet', () => {
     s.sheet.shapes = s.sheet.shapes!.filter((x) => x.id !== id);
     if (!s.sheet.shapes.length) delete s.sheet.shapes;
   });
@@ -177,7 +178,7 @@ export const orderShape = (s: GridStore, id: string, to: 'forward' | 'backward' 
   if (!list || i < 0) return;
   const j = to === 'forward' ? Math.min(list.length - 1, i + 1) : to === 'backward' ? Math.max(0, i - 1) : to === 'front' ? list.length - 1 : 0;
   if (i === j) return;
-  s.change(to === 'forward' || to === 'front' ? 'Bring forward' : 'Send backward', 'sheet', () => {
+  s.change(to === 'forward' || to === 'front' ? N('Bring forward') : N('Send backward'), 'sheet', () => {
     const arr = s.sheet.shapes!;
     const [sh] = arr.splice(i, 1);
     arr.splice(j, 0, sh!);
@@ -188,12 +189,12 @@ export const orderShape = (s: GridStore, id: string, to: 'forward' | 'backward' 
 
 export const addStroke = (s: GridStore, stroke: InkStroke): void => {
   if (stroke.points.length < 1) return;
-  s.change('Draw', 'sheet', () => { (s.sheet.ink ??= []).push(stroke); });
+  s.change(N('Draw'), 'sheet', () => { (s.sheet.ink ??= []).push(stroke); });
 };
 
 export const eraseStrokes = (s: GridStore, ids: Set<string>): void => {
   if (!ids.size || !s.sheet.ink?.some((k) => ids.has(k.id))) return;
-  s.change('Erase', 'sheet', () => {
+  s.change(N('Erase'), 'sheet', () => {
     s.sheet.ink = s.sheet.ink!.filter((k) => !ids.has(k.id));
     if (!s.sheet.ink.length) delete s.sheet.ink;
   });
@@ -201,7 +202,7 @@ export const eraseStrokes = (s: GridStore, ids: Set<string>): void => {
 
 export const clearInk = (s: GridStore): void => {
   if (!s.sheet.ink?.length) return;
-  s.change('Clear ink', 'sheet', () => { delete s.sheet.ink; });
+  s.change(N('Clear ink'), 'sheet', () => { delete s.sheet.ink; });
 };
 
 /** Distance from point p to segment ab. */
@@ -224,14 +225,14 @@ export const strokesAt = (ink: InkStroke[], p: [number, number], radius: number)
 // ---------- Allow edit ranges ----------
 
 export const addEditRange = (s: GridStore, title: string, range: CellRange, password?: string): void => {
-  s.change('Allow edit range', 'sheet', () => {
+  s.change(N('Allow edit range'), 'sheet', () => {
     (s.sheet.editRanges ??= []).push({ title: title.trim() || `Range${(s.sheet.editRanges?.length ?? 0) + 1}`, range, ...(password ? { password: protectionHash(password) } : {}) });
   });
 };
 
 export const removeEditRange = (s: GridStore, index: number): void => {
   if (!s.sheet.editRanges?.[index]) return;
-  s.change('Remove edit range', 'sheet', () => {
+  s.change(N('Remove edit range'), 'sheet', () => {
     s.sheet.editRanges!.splice(index, 1);
     if (!s.sheet.editRanges!.length) delete s.sheet.editRanges;
   });

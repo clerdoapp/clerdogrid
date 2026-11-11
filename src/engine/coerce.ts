@@ -1,5 +1,23 @@
 import { CellError, Err, isError, isLambda, isMatrix, isRef, isRefs, type FnContext, type Matrix, type RangeRef, type Scalar, type Value } from './types';
 import { parseDateTime } from './date';
+import { currencySymbols } from '../formats/locales';
+
+const escRe = (c: string): string => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+let currencyRes: { key: string; list: [RegExp, RegExp][] } | null = null;
+/** Removes one currency symbol from the front (after any sign) or the end of a typed number. */
+const stripCurrency = (s: string): string => {
+  if (/^[+-]?[\d.,]*(?:[eE][+-]?\d+)?$/.test(s)) return s;
+  const syms = currencySymbols();
+  const key = syms.join('\u0001');
+  if (currencyRes?.key !== key) {
+    currencyRes = { key, list: syms.map((sym) => { const e = escRe(sym); return [new RegExp(`^([+-]?)\\s*${e}\\s*(?=[\\d.])`), new RegExp(`(?<=[\\d.])\\s*${e}$`)]; }) };
+  }
+  for (const [before, after] of currencyRes.list) {
+    if (before.test(s)) return s.replace(before, '$1');
+    if (after.test(s)) return s.replace(after, '');
+  }
+  return s;
+};
 
 /** Parses text the way spreadsheet turns typed text into a number: 1,234.5  -12%  $3  1e3  (5)  and dates. */
 export const parseNumber = (text: string, date1904 = false): number | null => {
@@ -9,7 +27,7 @@ export const parseNumber = (text: string, date1904 = false): number | null => {
   if (/^\(.*\)$/.test(s)) { neg = true; s = s.slice(1, -1).trim(); }
   let pct = 0;
   while (s.endsWith('%')) { pct++; s = s.slice(0, -1).trim(); }
-  s = s.replace(/^([+-]?)\s*[$€£¥]\s*/, '$1').replace(/\s*[$€£¥]$/, '');
+  s = stripCurrency(s);
   if (/^[+-]?(\d{1,3}(,\d{3})+|\d+)?(\.\d*)?([eE][+-]?\d+)?$/.test(s) && /\d/.test(s)) {
     let n = Number(s.replace(/,/g, ''));
     if (!Number.isFinite(n)) return null;

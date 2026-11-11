@@ -10,9 +10,18 @@ import { toSerial } from '../engine/date';
 import { attr, boolAttr, decodeXstr, deepText, find, findAll, kid, kids, numAttr, parseRoot, type XNode } from './xml';
 import { readColor, readFont, readStyles, readTheme } from './xlsx-styles';
 import { INDEXED_COLORS } from './numfmt';
-import { readAnchor, readChart, shownColWidth } from './xlsx-chart';
+import { readAnchor, shownColWidth } from './xlsx-chart';
+import { readAnchorChart, readChartsheet } from './xlsx-chartex';
+import { readSparklines } from './xlsx-sparklines';
 import { shiftFormula, stripFuturePrefixes } from './formula-xml';
+import { readPivotParts } from './xlsx-pivot';
+import { readSlicerParts } from './xlsx-slicer';
 import { OBJECTS_REL_SHORT, applyObjectsPart, readProtectedRanges, readShape } from './xlsx-objects';
+import { parsePrintTitles, readHeaderPictures, readPageSetup } from './xlsx-page';
+import { applyWorkspacePart, readCustomViews, readIgnoredErrors, readNamedSheetViews, readSheetProtectionHash, readSplitPane, readWorkbookProtection } from './xlsx-workspace';
+
+/** customSheetViews nodes kept while sheets are read, for the workbook's custom views. */
+const customSheetViewNodes = new WeakMap<Sheet, XNode>();
 
 const MAX_PART = 1 << 30;
 const MAX_TOTAL = 2 ** 31;
@@ -351,15 +360,11 @@ const readDrawing = (path: string, sheet: Sheet, ctx: Ctx): void => {
   for (const a of root.children) {
     if (!/Anchor$/.test(a.name)) continue;
     const anchor = readAnchor(a, sheet);
-    const frame = find(a, 'graphicFrame');
-    const chartRef = frame && find(frame, 'chart');
-    if (chartRef) {
-      const rel = rels.get(attr(chartRef, 'id') ?? '');
-      const cx = rel && !rel.external ? ctx.pkg.xml(rel.target) : undefined;
-      const chart = cx && readChart(cx, `chart${sheet.charts.length + 1}`, anchor);
-      const descr = attr(find(frame, 'cNvPr'), 'descr');
-      if (chart && descr) chart.alt = descr;
-      if (chart) sheet.charts.push(chart);
+    // Charts, including extended charts offered next to a classic fallback.
+    const got = readAnchorChart(a, (rid) => { const rel = rels.get(rid); return rel && !rel.external ? ctx.pkg.xml(rel.target) : undefined; }, `chart${sheet.charts.length + 1}`, sheet);
+    if (got) {
+      if (got.descr) got.chart.alt = got.descr;
+      sheet.charts.push(got.chart);
       continue;
     }
     const pic = find(a, 'pic');
@@ -405,6 +410,8 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
   const pr = kid(ws, 'sheetPr');
   const tab = readColor(kid(pr, 'tabColor'), ctx.theme);
   if (tab) sheet.tabColor = tab;
+  const opr = kid(pr, 'outlinePr');
+  if (opr && (attr(opr, 'summaryBelow') === '0' || attr(opr, 'summaryRight') === '0')) sheet.outlinePr = { summaryBelow: attr(opr, 'summaryBelow') !== '0', summaryRight: attr(opr, 'summaryRight') !== '0' };
 
   const fp = kid(ws, 'sheetFormatPr');
   const dch = numAttr(fp, 'defaultColWidth');
@@ -420,11 +427,13 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
     sheet.view.showHeaders = attr(view, 'showRowColHeaders') !== '0';
     sheet.view.zoom = numAttr(view, 'zoomScale') || 100;
     sheet.view.rtl = boolAttr(view, 'rightToLeft');
+    const pv = attr(view, 'view');
+    if (pv === 'pageBreakPreview' || pv === 'pageLayout') sheet.view.pageView = pv;
     const pane = kid(view, 'pane');
     if (pane && (attr(pane, 'state') === 'frozen' || attr(pane, 'state') === 'frozenSplit')) {
       sheet.view.frozenCols = Math.round(numAttr(pane, 'xSplit') ?? 0);
       sheet.view.frozenRows = Math.round(numAttr(pane, 'ySplit') ?? 0);
-    }
+    } else readSplitPane(pane, sheet);
     const sels = kids(view, 'selection');
     const sel = sels[sels.length - 1];
     const r = sel && (parseRange((attr(sel, 'sqref') ?? '').split(' ')[0] ?? '') ?? parseRange(attr(sel, 'activeCell') ?? ''));
@@ -433,7 +442,8 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
 
   for (const c of kids(kid(ws, 'cols'), 'col')) {
     const min = (numAttr(c, 'min') ?? 1) - 1, max = Math.min((numAttr(c, 'max') ?? 1) - 1, 16383);
-    const info: { width?: number; hidden?: boolean; s?: number; outline?: number } = {};
+    const info: { width?: number; hidden?: boolean; s?: number; outline?: number; collapsed?: boolean } = {};
+    if (boolAttr(c, 'collapsed')) info.collapsed = true;
     const w = numAttr(c, 'width');
     if (w !== undefined && (boolAttr(c, 'customWidth') || Math.abs(shownColWidth(w) - sheet.defaultColWidth) > 0.01)) info.width = shownColWidth(w);
     if (boolAttr(c, 'hidden')) info.hidden = true;
@@ -450,7 +460,8 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
   let rowIdx = -1;
   for (const row of kids(kid(ws, 'sheetData'), 'row')) {
     rowIdx = (numAttr(row, 'r') ?? rowIdx + 2) - 1;
-    const info: { height?: number; hidden?: boolean; s?: number; outline?: number } = {};
+    const info: { height?: number; hidden?: boolean; s?: number; outline?: number; collapsed?: boolean } = {};
+    if (boolAttr(row, 'collapsed')) info.collapsed = true;
     const ht = numAttr(row, 'ht');
     if (ht !== undefined && boolAttr(row, 'customHeight')) info.height = ht;
     if (boolAttr(row, 'hidden')) info.hidden = true;
@@ -548,6 +559,8 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
     const p: NonNullable<Sheet['protection']> = { sheet: true };
     const pw = attr(prot, 'password');
     if (pw) p.password = pw;
+    const hash = readSheetProtectionHash(prot);
+    if (hash) p.hash = hash;
     const options: Record<string, boolean> = {};
     for (const k in prot.attrs) {
       if (k === 'sheet' || k === 'password' || /^(algorithmName|hashValue|saltValue|spinCount)$/.test(k)) continue;
@@ -557,25 +570,18 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
     sheet.protection = p;
   }
 
-  const ps = kid(ws, 'pageSetup');
-  const pm = kid(ws, 'pageMargins');
-  if (ps || pm) {
-    const setup: NonNullable<Sheet['pageSetup']> = {};
-    const o = attr(ps, 'orientation');
-    if (o === 'portrait' || o === 'landscape') setup.orientation = o;
-    const paper = numAttr(ps, 'paperSize');
-    if (paper) setup.paper = paper;
-    if (boolAttr(kid(pr, 'pageSetUpPr'), 'fitToPage')) {
-      setup.fitWidth = numAttr(ps, 'fitToWidth') ?? 1;
-      setup.fitHeight = numAttr(ps, 'fitToHeight') ?? 1;
-    }
-    if (pm) {
-      setup.margins = {
-        left: numAttr(pm, 'left') ?? 0.7, right: numAttr(pm, 'right') ?? 0.7, top: numAttr(pm, 'top') ?? 0.75,
-        bottom: numAttr(pm, 'bottom') ?? 0.75, header: numAttr(pm, 'header') ?? 0.3, footer: numAttr(pm, 'footer') ?? 0.3,
-      };
-    }
-    if (Object.keys(setup).length) sheet.pageSetup = setup;
+  const setup = readPageSetup(ws, pr);
+  if (setup) sheet.pageSetup = setup;
+  const hfRel = rels.get(attr(kid(ws, 'legacyDrawingHF'), 'r:id') ?? attr(kid(ws, 'legacyDrawingHF'), 'id') ?? '');
+  const hfVml = hfRel && !hfRel.external ? ctx.pkg.text(hfRel.target) : undefined;
+  if (hfRel && hfVml) {
+    const vmlRels = new Map(ctx.pkg.rels(hfRel.target).map((r) => [r.id, r]));
+    const pics = readHeaderPictures(hfVml, (id) => {
+      const r = vmlRels.get(id);
+      const data = r && !r.external ? ctx.pkg.bytes(r.target) : undefined;
+      return r && data ? { data, path: r.target } : undefined;
+    });
+    if (pics) sheet.pageSetup = { ...sheet.pageSetup, headerPictures: pics };
   }
 
   for (const tp of kids(kid(ws, 'tableParts'), 'tablePart')) {
@@ -588,7 +594,13 @@ const readSheet = (path: string, name: string, ctx: Ctx): Sheet => {
     if (rel.external) continue;
     if (rel.type === 'comments') readComments(rel.target, sheet, ctx);
     else if (rel.type === 'drawing') readDrawing(rel.target, sheet, ctx);
+    else if (rel.type === 'namedSheetView' && !sheet.sheetViews) { const v = readNamedSheetViews(ctx.pkg.text(rel.target)); if (v.length) sheet.sheetViews = v; }
   }
+  readIgnoredErrors(ws, sheet);
+  const sparks = readSparklines(ws);
+  if (sparks.length) sheet.sparklines = sparks;
+  const csv = kid(ws, 'customSheetViews');
+  if (csv) customSheetViewNodes.set(sheet, { name: 'w', attrs: {}, children: [csv], text: '' });
   return sheet;
 };
 
@@ -631,16 +643,31 @@ export const readXlsx = (data: Uint8Array): Workbook => {
   const ctx: Ctx = { pkg, theme, xfs, dxfs, strings, date1904, dynamicCm };
   const wb: Workbook = { sheets: [], names: [], styles: xfs, date1904, activeSheet: 0 };
 
+  const sheetPaths: string[] = [];
   for (const s of kids(kid(wbx, 'sheets'), 'sheet')) {
     const rel = relById.get(attr(s, 'id') ?? '');
+    if (rel?.type === 'chartsheet') {
+      const sheet = newSheet(attr(s, 'name') ?? `Chart${wb.sheets.length + 1}`);
+      const cs = pkg.xml(rel.target);
+      if (cs) readChartsheet(cs, sheet, new Map(pkg.rels(rel.target).map((r) => [r.id, r])), (p) => pkg.xml(p), (p) => pkg.rels(p));
+      const state = attr(s, 'state');
+      if (state === 'hidden' || state === 'veryHidden') sheet.state = state;
+      wb.sheets.push(sheet);
+      sheetPaths.push(rel.target);
+      continue;
+    }
     if (!rel || rel.type !== 'worksheet') continue;
     const sheet = readSheet(rel.target, attr(s, 'name') ?? `Sheet${wb.sheets.length + 1}`, ctx);
     const state = attr(s, 'state');
     if (state === 'hidden' || state === 'veryHidden') sheet.state = state;
     wb.sheets.push(sheet);
+    sheetPaths.push(rel.target);
   }
   if (!wb.sheets.length) throw new Error('This workbook has no worksheets.');
   wb.activeSheet = Math.min(numAttr(kid(kid(wbx, 'bookViews'), 'workbookView'), 'activeTab') ?? 0, wb.sheets.length - 1);
+  readWorkbookProtection(wbx, wb);
+  const customViews = readCustomViews(wbx, (i) => customSheetViewNodes.get(wb.sheets[i]!), wb.sheets.length);
+  if (customViews.length) wb.customViews = customViews;
 
   for (const dn of kids(kid(wbx, 'definedNames'), 'definedName')) {
     const name = attr(dn, 'name') ?? '';
@@ -650,6 +677,12 @@ export const readXlsx = (data: Uint8Array): Workbook => {
     if (/^_xlnm\.Print_Area$/i.test(name) && local !== undefined && wb.sheets[local]) {
       const sh = wb.sheets[local]!;
       sh.pageSetup = { ...sh.pageSetup, printArea: formula.split(',').map((p) => p.slice(p.lastIndexOf('!') + 1)).join(',') };
+      continue;
+    }
+    if (/^_xlnm\.Print_Titles$/i.test(name) && local !== undefined && wb.sheets[local]) {
+      const sh = wb.sheets[local]!;
+      const t = parsePrintTitles(formula);
+      sh.pageSetup = { ...sh.pageSetup, ...(t.rows ? { printTitleRows: t.rows } : {}), ...(t.cols ? { printTitleCols: t.cols } : {}) };
       continue;
     }
     const d: DefinedName = { name, formula };
@@ -669,6 +702,9 @@ export const readXlsx = (data: Uint8Array): Workbook => {
     const ch = numAttr(calc, 'iterateDelta');
     if (ch !== undefined) c.maxChange = ch;
     if (attr(calc, 'calcMode') === 'manual') c.manual = true;
+    if (attr(calc, 'calcMode') === 'autoNoTable') c.autoNoTable = true;
+    if (attr(calc, 'fullPrecision') === '0' || attr(calc, 'fullPrecision') === 'false') c.precisionAsDisplayed = true;
+    if (attr(calc, 'refMode') === 'R1C1') c.r1c1 = true;
     if (Object.keys(c).length) wb.calc = c;
   }
 
@@ -685,8 +721,13 @@ export const readXlsx = (data: Uint8Array): Workbook => {
     if (Object.keys(props).length) wb.props = props;
   }
 
+  readPivotParts(pkg, wb, wbx, wbPath, sheetPaths, stylesRel?.target, dxfs);
+  readSlicerParts(pkg, wb, wbx, wbPath, sheetPaths);
+
   const objRel = relOf(OBJECTS_REL_SHORT);
   if (objRel && !objRel.external) applyObjectsPart(wb, pkg.text(objRel.target));
+  const wsRel = relOf('workspace');
+  if (wsRel && !wsRel.external) applyWorkspacePart(wb, pkg.text(wsRel.target));
 
   // Saved scripts are only stored as text here; they never run when a file opens.
   const scriptsRel = relOf('scripts');

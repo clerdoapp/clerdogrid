@@ -3,6 +3,7 @@ import { quoteSheet } from '../../engine/parser';
 import { isError, isMatrix, MAX_COLS, MAX_ROWS, type Matrix, type Scalar } from '../../engine/types';
 import { colName, parseRange, type CellRange, type CellStyle } from '../../model/workbook';
 import type { GridStore } from '../../app/store';
+import { T, Tr } from '../i18n';
 
 export const PALETTE = [
   '#000000', '#3f3f46', '#71717a', '#a1a1aa', '#d4d4d8', '#ffffff',
@@ -15,31 +16,31 @@ export const PALETTE = [
 export const Tabs = <T extends string>({ tabs, value, onChange }: { tabs: readonly (readonly [T, string])[]; value: T; onChange: (v: T) => void }) => (
   <div className="tabsrow" role="tablist">
     {tabs.map(([id, label]) => (
-      <button key={id} role="tab" aria-selected={value === id} className={value === id ? 'on' : ''} onClick={() => onChange(id)}>{label}</button>
+      <button key={id} role="tab" aria-selected={value === id} className={value === id ? 'on' : ''} onClick={() => onChange(id)}>{Tr(label)}</button>
     ))}
   </div>
 );
 
 export const Check = ({ label, checked, onChange, disabled }: { label: ReactNode; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
-  <label className="b-check"><input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} /> <span>{label}</span></label>
+  <label className="b-check"><input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} /> <span>{Tr(label)}</span></label>
 );
 
 export const Radio = <T extends string>({ name, value, options, onChange, row }: { name: string; value: T; options: readonly (readonly [T, string])[]; onChange: (v: T) => void; row?: boolean }) => (
   <div className={row ? 'b-radios row' : 'b-radios'} role="radiogroup">
     {options.map(([v, l]) => (
-      <label key={v}><input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} /> {l}</label>
+      <label key={v}><input type="radio" name={name} checked={value === v} onChange={() => onChange(v)} /> {Tr(l)}</label>
     ))}
   </div>
 );
 
 /** Swatch row with an optional "no color" button and a custom color picker. */
 export const ColorPick = ({ value, onChange, none, label }: { value: string | undefined; onChange: (c: string | undefined) => void; none?: string; label?: string }) => (
-  <div className="b-colors" aria-label={label}>
-    {none !== undefined && <button type="button" className={`sw none${!value ? ' on' : ''}`} title={none} aria-label={none} onClick={() => onChange(undefined)} />}
+  <div className="b-colors" aria-label={Tr(label)}>
+    {none !== undefined && <button type="button" className={`sw none${!value ? ' on' : ''}`} title={Tr(none)} aria-label={Tr(none)} onClick={() => onChange(undefined)} />}
     {PALETTE.map((c) => (
       <button key={c} type="button" className={`sw${value?.toLowerCase() === c ? ' on' : ''}`} style={{ background: c }} title={c} aria-label={c} onClick={() => onChange(c)} />
     ))}
-    <label className="sw custom" title="More colors" aria-label="More colors">
+    <label className="sw custom" title={T('More colors')} aria-label={T('More colors')}>
       <input type="color" value={value && /^#[0-9a-f]{6}$/i.test(value) ? value : '#000000'} onChange={(e) => onChange(e.target.value)} />
     </label>
   </div>

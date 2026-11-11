@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Paintbrush, Pencil, Trash2 } from 'lucide-react';
 import { openDialog } from '../../app/commands';
 import { layoutOf } from '../../app/layout';
 import type { GridStore } from '../../app/store';
 import type { Chart } from '../../model/workbook';
 import { resolveChart } from './chartData';
 import { ChartSvg } from './ChartSvg';
+import { logicalDx } from '../render';
 import './charts.css';
+import './palette';
+import { N, T } from '../i18n';
 
 type Box = { left: number; top: number; width: number; height: number };
 type Corner = 'nw' | 'ne' | 'sw' | 'se';
@@ -22,8 +25,11 @@ export const selectChart = (store: GridStore, id: string | null): void => {
 
 const MIN_W = 120, MIN_H = 80;
 
+/** Shows the chart format panel. */
+export const openFormat = (store: GridStore): void => { store.view.panel = 'chart'; store.emit(); };
+
 export const deleteChart = (store: GridStore, id: string): void => {
-  store.change('Delete chart', 'sheet', () => { store.sheet.charts = store.sheet.charts.filter((c) => c.id !== id); });
+  store.change(N('Delete chart'), 'sheet', () => { store.sheet.charts = store.sheet.charts.filter((c) => c.id !== id); });
   selectChart(store, null);
 };
 
@@ -31,7 +37,7 @@ export const deleteChart = (store: GridStore, id: string): void => {
 const commitBox = (store: GridStore, chart: Chart, delta: Box, zoom: number, label: string): void => {
   const layout = layoutOf(store.sheet, store.layoutVersion);
   const a = chart.anchor;
-  const x = Math.max(0, layout.cols.start(a.col) + a.dx + delta.left / zoom);
+  const x = Math.max(0, layout.cols.start(a.col) + a.dx + logicalDx(store.sheet.view, delta.left, delta.width) / zoom);
   const y = Math.max(0, layout.rows.start(a.row) + a.dy + delta.top / zoom);
   const col = layout.cols.at(x), row = layout.rows.at(y);
   const next = {
@@ -55,7 +61,11 @@ export const ChartView = ({ store, chart, box, zoom }: { store: GridStore; chart
   // Clicking anywhere outside the chart deselects it.
   useEffect(() => {
     if (!selected) return;
-    const off = (e: PointerEvent) => { if (el.current && !el.current.contains(e.target as Node)) selectChart(store, null); };
+    // The tool panel and dialogs work on the selected chart, so clicks there keep it.
+    const off = (e: PointerEvent) => {
+      const t = e.target as Element;
+      if (el.current && !el.current.contains(t) && !t.closest?.('.toolpanel, .backdrop, .rail')) selectChart(store, null);
+    };
     document.addEventListener('pointerdown', off, true);
     return () => document.removeEventListener('pointerdown', off, true);
   }, [selected, store]);
@@ -86,7 +96,7 @@ export const ChartView = ({ store, chart, box, zoom }: { store: GridStore; chart
     const d = drag.current;
     if (!d || d.id !== e.pointerId) return;
     drag.current = null;
-    if (d.moved) commitBox(store, chart, delta, zoom, d.kind === 'move' ? 'Move chart' : 'Resize chart');
+    if (d.moved) commitBox(store, chart, delta, zoom, d.kind === 'move' ? N('Move chart') : N('Resize chart'));
     setDelta({ left: 0, top: 0, width: 0, height: 0 });
   };
 
@@ -95,7 +105,7 @@ export const ChartView = ({ store, chart, box, zoom }: { store: GridStore; chart
   const handlers = { onPointerMove: move, onPointerUp: end, onPointerCancel: end };
 
   return (
-    <div ref={el} className={`chartbox${selected ? ' on' : ''}`} style={style} tabIndex={-1} role="figure" aria-label={chart.title || 'Chart'}
+    <div ref={el} className={`chartbox${selected ? ' on' : ''}`} style={style} tabIndex={-1} role="figure" aria-label={data.title || T('Chart')} data-chart-id={chart.id}
       onPointerDown={start('move')} {...handlers}
       onDoubleClick={(e) => { e.stopPropagation(); openDialog(store, 'chart', { id: chart.id }); }}
       onContextMenu={(e) => e.stopPropagation()}
@@ -110,8 +120,9 @@ export const ChartView = ({ store, chart, box, zoom }: { store: GridStore; chart
         <>
           {(['nw', 'ne', 'sw', 'se'] as const).map((k) => <div key={k} className={`chandle ${k}`} onPointerDown={start(k)} {...handlers} />)}
           <div className="chartedit" onPointerDown={(e) => e.stopPropagation()}>
-            <button className="ico sm" aria-label="Edit chart" title="Edit chart" onClick={() => openDialog(store, 'chart', { id: chart.id })}><Pencil size={15} strokeWidth={1.9} /></button>
-            <button className="ico sm" aria-label="Delete chart" title="Delete chart" onClick={() => deleteChart(store, chart.id)}><Trash2 size={15} strokeWidth={1.9} /></button>
+            <button className="ico sm" aria-label={T('Format chart')} title={T('Format chart')} onClick={() => openFormat(store)}><Paintbrush size={15} strokeWidth={1.9} /></button>
+            <button className="ico sm" aria-label={T('Edit chart')} title={T('Edit chart')} onClick={() => openDialog(store, 'chart', { id: chart.id })}><Pencil size={15} strokeWidth={1.9} /></button>
+            <button className="ico sm" aria-label={T('Delete chart')} title={T('Delete chart')} onClick={() => deleteChart(store, chart.id)}><Trash2 size={15} strokeWidth={1.9} /></button>
           </div>
         </>
       )}

@@ -7,19 +7,20 @@ import { FONT_NAMES } from '../fonts';
 import { Dialog, Field, type DialogProps } from './Dialog';
 import { buildCode, NumberTab, parseCode, type NumOpts } from './numberFormat';
 import { Check, cleanStyle, ColorPick, cssOf, overlaps, Tabs } from './shared';
+import { N, T, Tr } from '../i18n';
 
 type Tab = 'number' | 'align' | 'font' | 'border' | 'fill' | 'protect';
-const TABS: [Tab, string][] = [['number', 'Number'], ['align', 'Alignment'], ['font', 'Font'], ['border', 'Border'], ['fill', 'Fill'], ['protect', 'Protection']];
+const TABS: [Tab, string][] = [['number', N('Number')], ['align', N('Alignment')], ['font', N('Font')], ['border', N('Border')], ['fill', N('Fill')], ['protect', N('Protection')]];
 
 export const BORDER_STYLES: BorderStyle[] = ['hair', 'dotted', 'dashDotDot', 'dashDot', 'dashed', 'thin', 'mediumDashDotDot', 'slantDashDot', 'mediumDashDot', 'mediumDashed', 'medium', 'thick', 'double'];
 const PATTERNS: [string, string][] = [
-  ['solid', 'Solid'], ['gray125', 'Light dots'], ['gray0625', 'Fine dots'], ['lightGray', 'Light gray'], ['mediumGray', 'Medium gray'], ['darkGray', 'Dark gray'],
-  ['darkHorizontal', 'Horizontal stripes'], ['darkVertical', 'Vertical stripes'], ['darkDown', 'Diagonal down'], ['darkUp', 'Diagonal up'], ['darkGrid', 'Grid'], ['darkTrellis', 'Trellis'],
-  ['lightHorizontal', 'Thin horizontal'], ['lightVertical', 'Thin vertical'], ['lightDown', 'Thin diagonal down'], ['lightUp', 'Thin diagonal up'], ['lightGrid', 'Thin grid'], ['lightTrellis', 'Thin trellis'],
+  ['solid', N('Solid')], ['gray125', N('Light dots')], ['gray0625', N('Fine dots')], ['lightGray', N('Light gray')], ['mediumGray', N('Medium gray')], ['darkGray', N('Dark gray')],
+  ['darkHorizontal', N('Horizontal stripes')], ['darkVertical', N('Vertical stripes')], ['darkDown', N('Diagonal down')], ['darkUp', N('Diagonal up')], ['darkGrid', N('Grid')], ['darkTrellis', N('Trellis')],
+  ['lightHorizontal', N('Thin horizontal')], ['lightVertical', N('Thin vertical')], ['lightDown', N('Thin diagonal down')], ['lightUp', N('Thin diagonal up')], ['lightGrid', N('Thin grid')], ['lightTrellis', N('Thin trellis')],
 ];
-const H_ALIGNS: [HAlign, string][] = [['general', 'General'], ['left', 'Left'], ['center', 'Center'], ['right', 'Right'], ['fill', 'Fill'], ['justify', 'Justify'], ['centerContinuous', 'Center across selection'], ['distributed', 'Distributed']];
-const V_ALIGNS: [VAlign, string][] = [['top', 'Top'], ['center', 'Center'], ['bottom', 'Bottom'], ['justify', 'Justify'], ['distributed', 'Distributed']];
-const UNDERLINES: [Underline | '', string][] = [['', 'None'], ['single', 'Single'], ['double', 'Double'], ['singleAccounting', 'Single accounting'], ['doubleAccounting', 'Double accounting']];
+const H_ALIGNS: [HAlign, string][] = [['general', N('General')], ['left', N('Left')], ['center', N('Center')], ['right', N('Right')], ['fill', N('Fill')], ['justify', N('Justify')], ['centerContinuous', N('Center across selection')], ['distributed', N('Distributed')]];
+const V_ALIGNS: [VAlign, string][] = [['top', N('Top')], ['center', N('Center')], ['bottom', N('Bottom')], ['justify', N('Justify')], ['distributed', N('Distributed')]];
+const UNDERLINES: [Underline | '', string][] = [['', N('None')], ['single', N('Single')], ['double', N('Double')], ['singleAccounting', N('Single accounting')], ['doubleAccounting', N('Double accounting')]];
 
 type Edge = 'top' | 'bottom' | 'left' | 'right' | 'insideH' | 'insideV' | 'diagonalUp' | 'diagonalDown';
 /** undefined = leave as is, null = remove. */
@@ -133,11 +134,11 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
     const hasEdges = Object.keys(edges).length > 0;
     const mergeChange = merge !== wasMerged;
     const ranges = store.sel.ranges;
-    if (mergeChange && merge && ranges.some((x) => store.sheet.tables.some((t) => overlaps(t.range, x)))) { store.notify("Cells in a table can't be merged."); return false; }
+    if (mergeChange && merge && ranges.some((x) => store.sheet.tables.some((t) => overlaps(t.range, x)))) { store.notify(T('Cells in a table can\'t be merged.')); return false; }
     const whole = ranges.some((x) => (x.r1 === 0 && x.r2 === MAX_ROWS - 1) || (x.c1 === 0 && x.c2 === MAX_COLS - 1));
     const grow = (x: CellRange) => ({ r1: Math.max(0, x.r1 - 1), c1: Math.max(0, x.c1 - 1), r2: Math.min(MAX_ROWS - 1, x.r2 + 1), c2: Math.min(MAX_COLS - 1, x.c2 + 1) });
     const scope = whole || mergeChange ? 'sheet' as const : ranges.map((x) => ({ area: hasEdges ? grow(x) : x }));
-    store.change('Format cells', scope, () => {
+    store.change(N('Format cells'), scope, () => {
       for (const x of ranges) {
         store.styleRange(x, (s) => {
           let next = deepPatch(s, p);
@@ -165,7 +166,7 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
   const deg = rotationToDeg(a.rotation);
   const edgeBtn = (k: Edge, label: string, icon: React.ReactNode) => {
     const on = !!shownEdge(k);
-    return <button type="button" className={`tool icon${on ? ' on' : ''}`} aria-pressed={on} title={label} aria-label={label} onClick={() => toggleEdge(k)}>{icon}</button>;
+    return <button type="button" className={`tool icon${on ? ' on' : ''}`} aria-pressed={on} title={Tr(label)} aria-label={Tr(label)} onClick={() => toggleEdge(k)}>{icon}</button>;
   };
   const edgeIcon = (d: string) => <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="2.5" y="2.5" width="13" height="13" fill="none" stroke="currentColor" strokeOpacity=".3" strokeDasharray="1 2" /><path d={d} stroke="currentColor" strokeWidth="1.9" fill="none" /></svg>;
   const sideLine = (k: Edge, x1: number, y1: number, x2: number, y2: number) => {
@@ -178,33 +179,33 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
   const multiR = r.r1 !== r.r2, multiC = r.c1 !== r.c2;
 
   return (
-    <Dialog title="Format cells" close={close} onOk={ok} wide>
+    <Dialog title={T('Format cells')} close={close} onOk={ok} wide>
       <Tabs tabs={TABS} value={tab} onChange={setTab} />
       {tab === 'number' && <NumberTab o={num} set={(p) => { setNumTouched(true); setNum((o) => ({ ...o, ...p })); }} sample={store.value(row, col)} date1904={store.wb.date1904} formats={formats} />}
 
       {tab === 'align' && (
         <div className="b-col">
           <div className="grid2">
-            <Field label="Horizontal"><select value={a.h ?? 'general'} onChange={(e) => sub('align', { h: e.target.value as HAlign })}>{H_ALIGNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-            <Field label="Vertical"><select value={a.v ?? 'bottom'} onChange={(e) => sub('align', { v: e.target.value as VAlign })}>{V_ALIGNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
+            <Field label={T('Horizontal')}><select value={a.h ?? 'general'} onChange={(e) => sub('align', { h: e.target.value as HAlign })}>{H_ALIGNS.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select></Field>
+            <Field label={T('Vertical')}><select value={a.v ?? 'bottom'} onChange={(e) => sub('align', { v: e.target.value as VAlign })}>{V_ALIGNS.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select></Field>
           </div>
-          <Field label="Indent"><input type="number" min={0} max={250} value={a.indent ?? 0} onChange={(e) => sub('align', { indent: Math.max(0, Math.min(250, Math.trunc(+e.target.value || 0))) || undefined })} /></Field>
+          <Field label={T('Indent')}><input type="number" min={0} max={250} value={a.indent ?? 0} onChange={(e) => sub('align', { indent: Math.max(0, Math.min(250, Math.trunc(+e.target.value || 0))) || undefined })} /></Field>
           <div className="b-checks">
-            <Check label="Wrap text" checked={!!a.wrap} onChange={(v) => sub('align', { wrap: v || undefined, shrink: v ? undefined : a.shrink })} />
-            <Check label="Shrink to fit" checked={!!a.shrink} disabled={!!a.wrap} onChange={(v) => sub('align', { shrink: v || undefined })} />
-            <Check label="Merge cells" checked={merge} disabled={!multiR && !multiC && !wasMerged} onChange={setMerge} />
-            <Check label="Right-to-left" checked={!!a.rtl} onChange={(v) => sub('align', { rtl: v || undefined })} />
+            <Check label={T('Wrap text')} checked={!!a.wrap} onChange={(v) => sub('align', { wrap: v || undefined, shrink: v ? undefined : a.shrink })} />
+            <Check label={T('Shrink to fit')} checked={!!a.shrink} disabled={!!a.wrap} onChange={(v) => sub('align', { shrink: v || undefined })} />
+            <Check label={T('Merge cells')} checked={merge} disabled={!multiR && !multiC && !wasMerged} onChange={setMerge} />
+            <Check label={T('Right-to-left')} checked={!!a.rtl} onChange={(v) => sub('align', { rtl: v || undefined })} />
           </div>
-          <Field label="Text angle">
+          <Field label={T('Text angle')}>
             <div className="b-angle">
-              <input type="range" min={-90} max={90} value={deg} disabled={a.rotation === 255} onChange={(e) => sub('align', { rotation: +e.target.value ? degToRotation(+e.target.value) : undefined })} aria-label="Text angle in degrees" />
+              <input type="range" min={-90} max={90} value={deg} disabled={a.rotation === 255} onChange={(e) => sub('align', { rotation: +e.target.value ? degToRotation(+e.target.value) : undefined })} aria-label={T('Text angle in degrees')} />
               <input type="number" min={-90} max={90} value={deg} disabled={a.rotation === 255} onChange={(e) => { const v = Math.max(-90, Math.min(90, Math.trunc(+e.target.value || 0))); sub('align', { rotation: v ? degToRotation(v) : undefined }); }} />
-              <span className="muted small">degrees</span>
+              <span className="muted small">{T('degrees')}</span>
             </div>
           </Field>
-          <Check label="Stack letters vertically" checked={a.rotation === 255} onChange={(v) => sub('align', { rotation: v ? 255 : undefined })} />
+          <Check label={T('Stack letters vertically')} checked={a.rotation === 255} onChange={(v) => sub('align', { rotation: v ? 255 : undefined })} />
           <div className="preview b-alignprev" style={{ justifyContent: a.h === 'center' || a.h === 'centerContinuous' ? 'center' : a.h === 'right' ? 'flex-end' : 'flex-start', alignItems: a.v === 'top' ? 'flex-start' : a.v === 'center' ? 'center' : 'flex-end', direction: a.rtl ? 'rtl' : undefined }}>
-            <span style={{ display: 'inline-block', transform: a.rotation === 255 ? undefined : `rotate(${-deg}deg)`, writingMode: a.rotation === 255 ? 'vertical-rl' : undefined, textOrientation: a.rotation === 255 ? 'upright' : undefined, paddingInlineStart: (a.indent ?? 0) * 9 }}>Text</span>
+            <span style={{ display: 'inline-block', transform: a.rotation === 255 ? undefined : `rotate(${-deg}deg)`, writingMode: a.rotation === 255 ? 'vertical-rl' : undefined, textOrientation: a.rotation === 255 ? 'upright' : undefined, paddingInlineStart: (a.indent ?? 0) * 9 }}>{T('Text')}</span>
           </div>
         </div>
       )}
@@ -212,52 +213,52 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
       {tab === 'font' && (
         <div className="b-col">
           <div className="b-fontrow">
-            <Field label="Font">
+            <Field label={T('Font')}>
               <input list="b-fontnames" value={f.name ?? 'Calibri'} onChange={(e) => sub('font', { name: e.target.value || undefined })} />
               <datalist id="b-fontnames">{FONT_NAMES.map((n) => <option key={n} value={n} />)}</datalist>
             </Field>
-            <Field label="Style">
+            <Field label={T('Style')}>
               <select value={fontStyle} onChange={(e) => sub('font', { bold: e.target.value.includes('b') || undefined, italic: e.target.value.includes('i') || undefined })}>
-                <option value="r">Regular</option><option value="i">Italic</option><option value="b">Bold</option><option value="bi">Bold italic</option>
+                <option value="r">{T('Regular')}</option><option value="i">{T('Italic')}</option><option value="b">{T('Bold')}</option><option value="bi">{T('Bold italic')}</option>
               </select>
             </Field>
-            <Field label="Size"><input type="number" min={1} max={409} step={0.5} value={f.size ?? 11} onChange={(e) => { const v = +e.target.value; if (v >= 1 && v <= 409) sub('font', { size: v }); }} /></Field>
+            <Field label={T('Size')}><input type="number" min={1} max={409} step={0.5} value={f.size ?? 11} onChange={(e) => { const v = +e.target.value; if (v >= 1 && v <= 409) sub('font', { size: v }); }} /></Field>
           </div>
-          <Field label="Underline"><select value={f.underline ?? ''} onChange={(e) => sub('font', { underline: (e.target.value || undefined) as Underline | undefined })}>{UNDERLINES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-          <Field label="Color"><ColorPick value={f.color} none="Automatic" onChange={(c) => sub('font', { color: c })} /></Field>
+          <Field label={T('Underline')}><select value={f.underline ?? ''} onChange={(e) => sub('font', { underline: (e.target.value || undefined) as Underline | undefined })}>{UNDERLINES.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select></Field>
+          <Field label={T('Color')}><ColorPick value={f.color} none={T('Automatic')} onChange={(c) => sub('font', { color: c })} /></Field>
           <div className="b-checks">
-            <Check label="Strikethrough" checked={!!f.strike} onChange={(v) => sub('font', { strike: v || undefined })} />
-            <Check label="Superscript" checked={f.vertAlign === 'superscript'} onChange={(v) => sub('font', { vertAlign: v ? 'superscript' : undefined })} />
-            <Check label="Subscript" checked={f.vertAlign === 'subscript'} onChange={(v) => sub('font', { vertAlign: v ? 'subscript' : undefined })} />
+            <Check label={T('Strikethrough')} checked={!!f.strike} onChange={(v) => sub('font', { strike: v || undefined })} />
+            <Check label={T('Superscript')} checked={f.vertAlign === 'superscript'} onChange={(v) => sub('font', { vertAlign: v ? 'superscript' : undefined })} />
+            <Check label={T('Subscript')} checked={f.vertAlign === 'subscript'} onChange={(v) => sub('font', { vertAlign: v ? 'subscript' : undefined })} />
           </div>
-          <div className="preview b-fontprev"><span style={cssOf({ font: f })}>The quick fox 123</span></div>
+          <div className="preview b-fontprev"><span style={cssOf({ font: f })}>{T('The quick fox 123')}</span></div>
         </div>
       )}
 
       {tab === 'border' && (
         <div className="b-split">
           <div className="b-col">
-            <Field label="Line">
+            <Field label={T('Line')}>
               <div className="b-list b-lines" role="listbox">
                 {BORDER_STYLES.map((s) => <button key={s} role="option" aria-selected={line === s} aria-label={s} className={line === s ? 'on' : ''} onClick={() => setLine(s)}><LineSample style={s} color={lineColor} /></button>)}
               </div>
             </Field>
-            <Field label="Color"><ColorPick value={lineColor} none="Automatic" onChange={setLineColor} /></Field>
+            <Field label={T('Color')}><ColorPick value={lineColor} none={T('Automatic')} onChange={setLineColor} /></Field>
           </div>
           <div className="b-col">
             <div className="iconrow b-presets">
-              <button type="button" className="tool" onClick={() => preset('none')}><Ban size={16} strokeWidth={1.9} /> None</button>
-              <button type="button" className="tool" onClick={() => preset('outline')}><Square size={16} strokeWidth={1.9} /> Outline</button>
-              <button type="button" className="tool" disabled={!multiR && !multiC} onClick={() => preset('inside')}><Grid3x3 size={16} strokeWidth={1.9} /> Inside</button>
+              <button type="button" className="tool" onClick={() => preset('none')}><Ban size={16} strokeWidth={1.9} />{' '}{T('None')}</button>
+              <button type="button" className="tool" onClick={() => preset('outline')}><Square size={16} strokeWidth={1.9} />{' '}{T('Outline')}</button>
+              <button type="button" className="tool" disabled={!multiR && !multiC} onClick={() => preset('inside')}><Grid3x3 size={16} strokeWidth={1.9} />{' '}{T('Inside')}</button>
             </div>
             <div className="b-borderbox">
               <div className="b-edgecol">
-                {edgeBtn('top', 'Top', edgeIcon('M2.5 2.5h13'))}
-                {multiR && edgeBtn('insideH', 'Inside horizontal', edgeIcon('M2.5 9h13'))}
-                {edgeBtn('bottom', 'Bottom', edgeIcon('M2.5 15.5h13'))}
-                {edgeBtn('diagonalUp', 'Diagonal up', edgeIcon('M2.5 15.5l13-13'))}
+                {edgeBtn('top', N('Top'), edgeIcon('M2.5 2.5h13'))}
+                {multiR && edgeBtn('insideH', N('Inside horizontal'), edgeIcon('M2.5 9h13'))}
+                {edgeBtn('bottom', N('Bottom'), edgeIcon('M2.5 15.5h13'))}
+                {edgeBtn('diagonalUp', N('Diagonal up'), edgeIcon('M2.5 15.5l13-13'))}
               </div>
-              <svg className="b-bprev" viewBox="0 0 160 120" role="img" aria-label="Border preview">
+              <svg className="b-bprev" viewBox="0 0 160 120" role="img" aria-label={T('Border preview')}>
                 <rect x="20" y="15" width="120" height="90" fill="var(--sheet)" />
                 {multiR && sideLine('insideH', 20, 60, 140, 60)}
                 {multiC && sideLine('insideV', 80, 15, 80, 105)}
@@ -267,17 +268,17 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
                 {sideLine('bottom', 20, 105, 140, 105)}
                 {sideLine('left', 20, 15, 20, 105)}
                 {sideLine('right', 140, 15, 140, 105)}
-                <text x="50" y="45" fontSize="11" fill="var(--muted)" textAnchor="middle">Text</text>
-                {multiC && <text x="110" y="45" fontSize="11" fill="var(--muted)" textAnchor="middle">Text</text>}
+                <text x="50" y="45" fontSize="11" fill="var(--muted)" textAnchor="middle">{T('Text')}</text>
+                {multiC && <text x="110" y="45" fontSize="11" fill="var(--muted)" textAnchor="middle">{T('Text')}</text>}
               </svg>
               <div className="b-edgecol">
-                {edgeBtn('left', 'Left', edgeIcon('M2.5 2.5v13'))}
-                {multiC && edgeBtn('insideV', 'Inside vertical', edgeIcon('M9 2.5v13'))}
-                {edgeBtn('right', 'Right', edgeIcon('M15.5 2.5v13'))}
-                {edgeBtn('diagonalDown', 'Diagonal down', edgeIcon('M2.5 2.5l13 13'))}
+                {edgeBtn('left', N('Left'), edgeIcon('M2.5 2.5v13'))}
+                {multiC && edgeBtn('insideV', N('Inside vertical'), edgeIcon('M9 2.5v13'))}
+                {edgeBtn('right', N('Right'), edgeIcon('M15.5 2.5v13'))}
+                {edgeBtn('diagonalDown', N('Diagonal down'), edgeIcon('M2.5 2.5l13 13'))}
               </div>
             </div>
-            <p className="muted small">Pick a line and color, then tap an edge or a preset.</p>
+            <p className="muted small">{T('Pick a line and color, then tap an edge or a preset.')}</p>
           </div>
         </div>
       )}
@@ -285,13 +286,13 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
       {tab === 'fill' && (
         <div className="b-col">
           <div className="b-seg" role="radiogroup">
-            {(['none', 'color', 'gradient'] as const).map((m) => <button key={m} role="radio" aria-checked={fillMode === m} className={fillMode === m ? 'on' : ''} onClick={() => { setFillTouched(true); setFillMode(m); }}>{m === 'none' ? 'No fill' : m === 'color' ? 'Color' : 'Gradient'}</button>)}
+            {(['none', 'color', 'gradient'] as const).map((m) => <button key={m} role="radio" aria-checked={fillMode === m} className={fillMode === m ? 'on' : ''} onClick={() => { setFillTouched(true); setFillMode(m); }}>{m === 'none' ? T('No fill') : m === 'color' ? T('Color') : T('Gradient')}</button>)}
           </div>
           {fillMode === 'color' && <>
-            <Field label="Background color"><ColorPick value={eff.fill?.color} onChange={(c) => setFill({ color: c })} /></Field>
+            <Field label={T('Background color')}><ColorPick value={eff.fill?.color} onChange={(c) => setFill({ color: c })} /></Field>
             <div className="grid2">
-              <Field label="Pattern"><select value={eff.fill?.pattern ?? 'solid'} onChange={(e) => setFill({ pattern: e.target.value })}>{PATTERNS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
-              <Field label="Pattern color"><input type="color" value={eff.fill?.patternColor ?? '#000000'} disabled={(eff.fill?.pattern ?? 'solid') === 'solid'} onChange={(e) => setFill({ patternColor: e.target.value })} /></Field>
+              <Field label={T('Pattern')}><select value={eff.fill?.pattern ?? 'solid'} onChange={(e) => setFill({ pattern: e.target.value })}>{PATTERNS.map(([v, l]) => <option key={v} value={v}>{Tr(l)}</option>)}</select></Field>
+              <Field label={T('Pattern color')}><input type="color" value={eff.fill?.patternColor ?? '#000000'} disabled={(eff.fill?.pattern ?? 'solid') === 'solid'} onChange={(e) => setFill({ patternColor: e.target.value })} /></Field>
             </div>
           </>}
           {fillMode === 'gradient' && (() => {
@@ -300,9 +301,9 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
             const setG = (p: { angle?: number; c1?: string; c2?: string }) => setFill({ gradient: { angle: p.angle ?? g.angle, stops: [{ pos: 0, color: p.c1 ?? c1 }, { pos: 1, color: p.c2 ?? c2 }] } });
             return <>
               <div className="grid3">
-                <Field label="Color 1"><input type="color" value={c1} onChange={(e) => setG({ c1: e.target.value })} /></Field>
-                <Field label="Color 2"><input type="color" value={c2} onChange={(e) => setG({ c2: e.target.value })} /></Field>
-                <Field label="Direction"><select value={g.angle} onChange={(e) => setG({ angle: +e.target.value })}><option value={0}>Left to right</option><option value={90}>Top to bottom</option><option value={45}>Diagonal down</option><option value={135}>Diagonal up</option></select></Field>
+                <Field label={T('Color 1')}><input type="color" value={c1} onChange={(e) => setG({ c1: e.target.value })} /></Field>
+                <Field label={T('Color 2')}><input type="color" value={c2} onChange={(e) => setG({ c2: e.target.value })} /></Field>
+                <Field label={T('Direction')}><select value={g.angle} onChange={(e) => setG({ angle: +e.target.value })}><option value={0}>{T('Left to right')}</option><option value={90}>{T('Top to bottom')}</option><option value={45}>{T('Diagonal down')}</option><option value={135}>{T('Diagonal up')}</option></select></Field>
               </div>
             </>;
           })()}
@@ -312,9 +313,9 @@ export const FormatCellsDialog = ({ store, data, close }: DialogProps<{ tab?: Ta
 
       {tab === 'protect' && (
         <div className="b-col">
-          <Check label="Locked" checked={eff.protection?.locked !== false} onChange={(v) => sub('protection', { locked: v ? undefined : false })} />
-          <Check label="Hide formulas" checked={!!eff.protection?.hidden} onChange={(v) => sub('protection', { hidden: v || undefined })} />
-          <p className="muted small">These take effect after you protect the sheet (Review, Protect sheet).</p>
+          <Check label={T('Locked')} checked={eff.protection?.locked !== false} onChange={(v) => sub('protection', { locked: v ? undefined : false })} />
+          <Check label={T('Hide formulas')} checked={!!eff.protection?.hidden} onChange={(v) => sub('protection', { hidden: v || undefined })} />
+          <p className="muted small">{T('These take effect after you protect the sheet (Review, Protect sheet).')}</p>
         </div>
       )}
     </Dialog>

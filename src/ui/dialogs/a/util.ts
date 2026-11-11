@@ -1,6 +1,6 @@
 import type { Scalar } from '../../../engine/types';
 import { MAX_COLS, MAX_ROWS } from '../../../engine/types';
-import { cellKey, internStyle, mergeStyle, newSheet, rangeAddr, type CellRange, type CellStyle } from '../../../model/workbook';
+import { cellKey, internStyle, mergeStyle, newUserSheet as newSheet, rangeAddr, type CellRange, type CellStyle } from '../../../model/workbook';
 import type { GridStore } from '../../../app/store';
 import { parseRef } from '../../charts/chartData';
 

@@ -1,8 +1,9 @@
+import { N } from '../../ui/i18n';
 export interface SampleScript { id: string; name: string; about: string; code: string }
 
 export const SAMPLES: SampleScript[] = [
   {
-    id: 'unhide', name: 'Unhide all rows and columns', about: 'Shows every hidden row and column on this sheet.',
+    id: 'unhide', name: N('Unhide all rows and columns'), about: N('Shows every hidden row and column on this sheet.'),
     code: `function main(workbook) {
   const sheet = workbook.getActiveSheet();
   const used = sheet.getUsedRange();
@@ -14,7 +15,7 @@ export const SAMPLES: SampleScript[] = [
 `,
   },
   {
-    id: 'removeEmptyRows', name: 'Remove empty rows', about: 'Deletes rows with nothing in them inside the used range.',
+    id: 'removeEmptyRows', name: N('Remove empty rows'), about: N('Deletes rows with nothing in them inside the used range.'),
     code: `function main(workbook) {
   const sheet = workbook.getActiveSheet();
   const used = sheet.getUsedRange();
@@ -33,7 +34,7 @@ export const SAMPLES: SampleScript[] = [
 `,
   },
   {
-    id: 'properCase', name: 'Convert text to proper case', about: 'Capitalizes the first letter of each word in the selected cells.',
+    id: 'properCase', name: N('Convert text to proper case'), about: N('Capitalizes the first letter of each word in the selected cells.'),
     code: `function main(workbook) {
   const range = workbook.getSelectedRange();
   const formulas = range.getFormulas();
@@ -46,7 +47,7 @@ export const SAMPLES: SampleScript[] = [
 `,
   },
   {
-    id: 'highlightDuplicates', name: 'Highlight duplicates', about: 'Fills cells in the selection whose value appears more than once.',
+    id: 'highlightDuplicates', name: N('Highlight duplicates'), about: N('Fills cells in the selection whose value appears more than once.'),
     code: `function main(workbook) {
   const range = workbook.getSelectedRange();
   const values = range.getValues();
@@ -68,7 +69,7 @@ export const SAMPLES: SampleScript[] = [
 `,
   },
   {
-    id: 'totalRow', name: 'Add a total row', about: 'Adds a bold row of SUM formulas under the data on this sheet.',
+    id: 'totalRow', name: N('Add a total row'), about: N('Adds a bold row of SUM formulas under the data on this sheet.'),
     code: `function main(workbook) {
   const sheet = workbook.getActiveSheet();
   const used = sheet.getUsedRange();
@@ -89,7 +90,7 @@ export const SAMPLES: SampleScript[] = [
 `,
   },
   {
-    id: 'splitNames', name: 'Split full names into columns', about: 'Splits names in the selected column into first and last name columns to its right.',
+    id: 'splitNames', name: N('Split full names into columns'), about: N('Splits names in the selected column into first and last name columns to its right.'),
     code: `function main(workbook) {
   const range = workbook.getSelectedRange().getColumn(0);
   const values = range.getValues();
@@ -108,7 +109,7 @@ export const SAMPLES: SampleScript[] = [
 `,
   },
   {
-    id: 'numberRows', name: 'Number the rows', about: 'Puts 1, 2, 3… in a new column to the left of the data.',
+    id: 'numberRows', name: N('Number the rows'), about: N('Puts 1, 2, 3… in a new column to the left of the data.'),
     code: `function main(workbook) {
   const sheet = workbook.getActiveSheet();
   const used = sheet.getUsedRange();
@@ -129,7 +130,7 @@ export const SAMPLES: SampleScript[] = [
 `,
   },
   {
-    id: 'summarySheet', name: 'Summary of all sheets', about: 'Makes a Summary sheet with the total of the numbers on every sheet.',
+    id: 'summarySheet', name: N('Summary of all sheets'), about: N('Makes a Summary sheet with the total of the numbers on every sheet.'),
     code: `function main(workbook) {
   let summary = workbook.getSheet("Summary");
   if (!summary) summary = workbook.addSheet("Summary");

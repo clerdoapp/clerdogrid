@@ -8,6 +8,7 @@ import { pxToChars } from '../../app/layout';
 import { keyCol, keyRow, newSheet, type CellRange, type CellStyle, type TableDef } from '../../model/workbook';
 import { styleTable, TABLE_LOOKS } from '../../ui/dialogs/styles';
 import { buildRuntime, type FormatPatch, type RunResult, type ScriptOp, type SnapCell, type SnapValue, type Snapshot } from './runtime';
+import { N, T } from '../../ui/i18n';
 
 const snapValue = (v: Scalar): SnapValue => (v instanceof CellError ? v.code : v);
 
@@ -92,7 +93,7 @@ const uniqueTableName = (store: GridStore, wanted: string): string => {
 
 const addTable = (store: GridStore, sheet: number, a: CellRange, wanted: string): void => {
   const s = store.wb.sheets[sheet]!;
-  if (s.tables.some((t) => t.range.r1 <= a.r2 && t.range.r2 >= a.r1 && t.range.c1 <= a.c2 && t.range.c2 >= a.c1)) throw new Error('That range overlaps another table.');
+  if (s.tables.some((t) => t.range.r1 <= a.r2 && t.range.r2 >= a.r1 && t.range.c1 <= a.c2 && t.range.c2 >= a.c1)) throw new Error(T('That range overlaps another table.'));
   const names: string[] = [];
   for (let c = a.c1; c <= a.c2; c++) {
     const v = store.engine.getValue(sheet, a.r1, c);
@@ -147,12 +148,12 @@ const wellFormed = (op: ScriptOp): boolean => {
 export const checkOps = (store: GridStore, ops: ScriptOp[]): string | null => {
   let sheets = store.wb.sheets.length;
   for (const op of ops) {
-    if (!wellFormed(op)) return 'The script returned an edit that ClerdoGrid does not understand.';
+    if (!wellFormed(op)) return T('The script returned an edit that ClerdoGrid does not understand.');
     if (op.t === 'addSheet') sheets++;
-    if ('s' in op && (op.s < 0 || op.s >= sheets)) return 'The script referred to a sheet that does not exist.';
+    if ('s' in op && (op.s < 0 || op.s >= sheets)) return T('The script referred to a sheet that does not exist.');
     if (op.t === 'formula') {
       try { parseFormula(op.f); } catch (e) {
-        if (e instanceof FormulaError) return `The formula "=${op.f}" can't be read: ${e.message}`;
+        if (e instanceof FormulaError) return T('The formula "={f}" can\'t be read: {message}', { f: op.f, message: e.message });
         throw e;
       }
     }
@@ -161,14 +162,14 @@ export const checkOps = (store: GridStore, ops: ScriptOp[]): string | null => {
 };
 
 /** Applies a script's edits to the workbook as one undo step. Returns an error message, or null. */
-export const applyOps = (store: GridStore, ops: ScriptOp[], label = 'Run script'): string | null => {
+export const applyOps = (store: GridStore, ops: ScriptOp[], label = N('Run script')): string | null => {
   if (!ops.length) return null;
   const bad = checkOps(store, ops);
   if (bad) return bad;
-  if (store.wb.protection?.structure && ops.some((o) => o.t === 'addSheet' || o.t === 'renameSheet')) return 'The workbook structure is protected, so the script cannot add or rename sheets.';
+  if (store.wb.protection?.structure && ops.some((o) => o.t === 'addSheet' || o.t === 'renameSheet')) return T('The workbook structure is protected, so the script cannot add or rename sheets.');
   const touched = new Set<number>();
   for (const op of ops) if ('s' in op) touched.add(op.s);
-  for (const si of touched) if (store.wb.sheets[si]?.protection?.sheet) return `The sheet "${store.wb.sheets[si]!.name}" is protected. Unprotect it to run this script.`;
+  for (const si of touched) if (store.wb.sheets[si]?.protection?.sheet) return T('The sheet "{name}" is protected. Unprotect it to run this script.', { name: store.wb.sheets[si]!.name });
   let finalSheet: number | null = null;
   let finalSel: CellRange | null = null;
   let failure: string | null = null;
@@ -196,7 +197,7 @@ export const applyOps = (store: GridStore, ops: ScriptOp[], label = 'Run script'
           case 'sort': onSheet(store, op.s, () => sortRange(store, op.a, [{ col: op.col, descending: !op.asc }], false)); break;
           case 'freeze': { const v = store.wb.sheets[op.s]!.view; v.frozenRows = op.rows; v.frozenCols = op.cols; break; }
           case 'addSheet': store.wb.sheets.push(newSheet(op.name)); store.engine.sheetsChanged(); break;
-          case 'renameSheet': if (!renameSheet(store, op.s, op.name)) throw new Error(`The sheet couldn't be renamed to "${op.name}".`); break;
+          case 'renameSheet': if (!renameSheet(store, op.s, op.name)) throw new Error(T('The sheet couldn\'t be renamed to "{name}".', { name: op.name })); break;
           case 'hide': {
             const s = store.wb.sheets[op.s]!;
             const map = op.axis === 'row' ? s.rows : s.cols;

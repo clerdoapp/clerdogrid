@@ -3,8 +3,9 @@ import { CellError, MAX_COLS, MAX_ROWS, type Scalar } from '../../engine/types';
 import { formatValue } from '../../formats/numfmt';
 import { cellKey, internStyle, keyCol, keyRow, type Cell, type CellRange, type CellStyle } from '../../model/workbook';
 import type { GridStore } from '../store';
+import { N, T } from '../../ui/i18n';
 
-interface ClipCell { v: Scalar; f?: string; style: CellStyle; display: string }
+interface ClipCell { v: Scalar; f?: string; style: CellStyle; display: string; /** Source cell, when copied rows or columns were skipped. */ at?: [number, number] }
 interface Clip {
   sheet: number;
   range: CellRange;
@@ -42,21 +43,35 @@ const styleCss = (s: CellStyle): string => {
 
 /** Copies (or cuts) the selection to the internal clipboard and the system clipboard as text and HTML. */
 export const copySelection = async (store: GridStore, cut = false): Promise<void> => {
-  if (store.sel.ranges.length > 1) { store.notify("That command can't be used on multiple selections."); return; }
-  const r = clampRange(store, store.range);
+  // Several blocks copy together when they line up (as after selecting visible cells only).
+  const ranges = store.sel.ranges.map((x) => clampRange(store, x));
+  let rowList: number[] | null = null, colList: number[] | null = null;
+  if (ranges.length > 1) {
+    const sameCols = ranges.every((x) => x.c1 === ranges[0]!.c1 && x.c2 === ranges[0]!.c2);
+    const sameRows = ranges.every((x) => x.r1 === ranges[0]!.r1 && x.r2 === ranges[0]!.r2);
+    const lines = (a: [number, number][]) => [...new Set(a.flatMap(([p, q]) => Array.from({ length: q - p + 1 }, (_, i) => p + i)))].sort((x, y) => x - y);
+    const rowsSet = lines(ranges.map((x) => [x.r1, x.r2])), colsSet = lines(ranges.map((x) => [x.c1, x.c2]));
+    // A grid of blocks (rows x columns), like visible cells around hidden lines.
+    const grid = ranges.length === new Set(ranges.map((x) => `${x.r1},${x.r2}`)).size * new Set(ranges.map((x) => `${x.c1},${x.c2}`)).size;
+    if (cut || !(sameCols || sameRows || grid)) { store.notify(T('That command can\'t be used on multiple selections.')); return; }
+    rowList = rowsSet; colList = colsSet;
+  }
+  const r = rowList && colList ? { r1: rowList[0]!, c1: colList[0]!, r2: rowList[rowList.length - 1]!, c2: colList[colList.length - 1]! } : ranges[ranges.length - 1]!;
+  const rowsToCopy = rowList ?? Array.from({ length: r.r2 - r.r1 + 1 }, (_, i) => r.r1 + i);
+  const colsToCopy = colList ?? Array.from({ length: r.c2 - r.c1 + 1 }, (_, i) => r.c1 + i);
   const cells: (ClipCell | null)[][] = [];
   const lines: string[] = [];
   const html: string[] = ['<table>'];
-  for (let row = r.r1; row <= r.r2; row++) {
+  for (const row of rowsToCopy) {
     if (store.sheet.rows.get(row)?.hidden && !cut) continue;
     const line: (ClipCell | null)[] = [];
     const texts: string[] = [];
     html.push('<tr>');
-    for (let col = r.c1; col <= r.c2; col++) {
+    for (const col of colsToCopy) {
       const c = store.cell(row, col);
       const display = displayText(store, row, col);
       const style = store.style(row, col);
-      line.push(c || style !== store.wb.styles[0] ? { v: c?.v ?? null, f: c?.f, style, display } : null);
+      line.push(c || style !== store.wb.styles[0] ? { v: c?.v ?? null, f: c?.f, style, display, at: [row, col] } : null);
       texts.push(/[\t\n"]/.test(display) ? `"${display.replace(/"/g, '""')}"` : display);
       html.push(`<td style="${escapeHtml(styleCss(style))}">${escapeHtml(display)}</td>`);
     }
@@ -68,8 +83,8 @@ export const copySelection = async (store: GridStore, cut = false): Promise<void
   const text = lines.join('\r\n') + '\r\n';
   clip = {
     sheet: store.sheetIndex, range: r, cells, cut, text,
-    colWidths: Array.from({ length: r.c2 - r.c1 + 1 }, (_, i) => store.sheet.cols.get(r.c1 + i)?.width),
-    merges: store.sheet.merges.filter((m) => m.r1 >= r.r1 && m.r2 <= r.r2 && m.c1 >= r.c1 && m.c2 <= r.c2),
+    colWidths: colsToCopy.map((c) => store.sheet.cols.get(c)?.width),
+    merges: rowList ? [] : store.sheet.merges.filter((m) => m.r1 >= r.r1 && m.r2 <= r.r2 && m.c1 >= r.c1 && m.c2 <= r.c2),
   };
   store.marquee = { sheet: store.sheetIndex, range: r, cut };
   store.emit();
@@ -118,11 +133,11 @@ const pasteInternal = (store: GridStore, c: Clip, opts: PasteOptions): void => {
   const tH = opts.transpose ? w : h, tW = opts.transpose ? h : w;
   const reps = (sel.r2 - sel.r1 + 1) % tH === 0 && (sel.c2 - sel.c1 + 1) % tW === 0 ? [(sel.r2 - sel.r1 + 1) / tH, (sel.c2 - sel.c1 + 1) / tW] : [1, 1];
   const target: CellRange = { r1: sel.r1, c1: sel.c1, r2: sel.r1 + tH * reps[0]! - 1, c2: sel.c1 + tW * reps[1]! - 1 };
-  if (target.r2 >= MAX_ROWS || target.c2 >= MAX_COLS) { store.notify("The paste area doesn't fit on the sheet."); return; }
+  if (target.r2 >= MAX_ROWS || target.c2 >= MAX_COLS) { store.notify(T('The paste area doesn\'t fit on the sheet.')); return; }
   if (c.cut && c.sheet !== store.sheetIndex && store.wb.sheets[c.sheet] === undefined) return;
   const scope = [{ area: target }];
   if (c.cut) scope.push({ area: c.range, sheet: c.sheet } as never);
-  store.change(c.cut ? 'Move' : 'Paste', c.cut ? 'book' : scope, () => {
+  store.change(c.cut ? N('Move') : N('Paste'), c.cut ? 'book' : scope, () => {
     const sheet = store.sheetIndex;
     if (c.cut) {
       // Moving: clear the source first, then write, then fix references to the moved block everywhere.
@@ -161,21 +176,21 @@ const writeCell = (store: GridStore, sheet: number, row: number, col: number, cc
   const withContent = mode !== 'formats' && mode !== 'columnWidths';
   if (mode === 'columnWidths') return;
   if (mode === 'link') {
-    const ref = `${c.sheet !== sheet ? `'${store.wb.sheets[c.sheet]!.name.replace(/'/g, "''")}'!` : ''}$${colLetters(c.range.c1 + j)}$${c.range.r1 + i + 1}`;
+    const ref = `${c.sheet !== sheet ? `'${store.wb.sheets[c.sheet]!.name.replace(/'/g, "''")}'!` : ''}$${colLetters(cc?.at?.[1] ?? c.range.c1 + j)}$${(cc?.at?.[0] ?? c.range.r1 + i) + 1}`;
     store.engine.setFormula(sheet, row, col, ref);
     return;
   }
   if (withContent) {
     if (!cc || (cc.v === null && !cc.f)) { if (op === 'none') store.engine.setValue(sheet, row, col, null); }
     else if (cc.f && (mode === 'all' || mode === 'formulas' || mode === 'formulasAndFormats' || mode === 'noBorders') && op === 'none') {
-      const f = c.cut ? cc.f : shiftFormula(cc.f, row - (c.range.r1 + i), col - (c.range.c1 + j));
+      const f = c.cut ? cc.f : shiftFormula(cc.f, row - (cc.at?.[0] ?? c.range.r1 + i), col - (cc.at?.[1] ?? c.range.c1 + j));
       store.engine.setFormula(sheet, row, col, f);
     } else if (op !== 'none' && typeof cc.v === 'number') {
       const cur = store.engine.getValue(sheet, row, col);
       const base = typeof cur === 'number' ? cur : cur === null ? 0 : NaN;
       const v = op === 'add' ? base + cc.v : op === 'subtract' ? base - cc.v : op === 'multiply' ? base * cc.v : cc.v === 0 ? NaN : base / cc.v;
       store.engine.setValue(sheet, row, col, Number.isFinite(v) ? v : new CellError(op === 'divide' ? '#DIV/0!' : '#VALUE!'));
-    } else store.engine.setValue(sheet, row, col, cc.f ? store.engine.getValue(c.sheet, c.range.r1 + i, c.range.c1 + j) : cc.v);
+    } else store.engine.setValue(sheet, row, col, cc.f ? store.engine.getValue(c.sheet, cc.at?.[0] ?? c.range.r1 + i, cc.at?.[1] ?? c.range.c1 + j) : cc.v);
   }
   if (withStyle) {
     let style = cc?.style ?? {};
@@ -242,8 +257,8 @@ const pasteGrid = (store: GridStore, rows: ExtCell[][]): void => {
   const sel = store.range;
   const w = Math.max(...rows.map((r) => r.length));
   const target: CellRange = { r1: sel.r1, c1: sel.c1, r2: sel.r1 + rows.length - 1, c2: sel.c1 + w - 1 };
-  if (target.r2 >= MAX_ROWS || target.c2 >= MAX_COLS) { store.notify("The paste area doesn't fit on the sheet."); return; }
-  store.change('Paste', [{ area: target }], () => {
+  if (target.r2 >= MAX_ROWS || target.c2 >= MAX_COLS) { store.notify(T('The paste area doesn\'t fit on the sheet.')); return; }
+  store.change(N('Paste'), [{ area: target }], () => {
     rows.forEach((r, i) => r.forEach((c, j) => {
       store.enter(target.r1 + i, target.c1 + j, c.text);
       if (c.style) store.styleRange({ r1: target.r1 + i, c1: target.c1 + j, r2: target.r1 + i, c2: target.c1 + j }, (s) => ({ ...s, ...c.style }));

@@ -1,0 +1,78 @@
+/* Workspace feature: focus cell, error indicators, panes, banners, split bars. Colors come from app.css tokens. */
+.overlay > .ws-focus, .overlay > .ws-errors { position: absolute; left: 0; top: 0; pointer-events: none; }
+.ws-clip { position: absolute; overflow: hidden; pointer-events: none; }
+.ws-band { position: absolute; pointer-events: none; box-sizing: border-box; }
+.ws-tri { position: absolute; width: 0; height: 0; border-style: solid; pointer-events: none; }
+.ws-errbtn-wrap { position: absolute; pointer-events: auto; z-index: 6; }
+.ws-errbtn { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 5px; background: var(--panel); border: 1px solid var(--line); color: #b7791f; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+.ws-errbtn:hover, .ws-errbtn[aria-expanded='true'] { border-color: var(--accent); }
+.ws-errmenu { position: absolute; top: 24px; left: 0; min-width: 250px; max-width: 320px; padding: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); display: flex; flex-direction: column; z-index: 8; }
+.ws-errmenu button, .ws-statusmenu button { text-align: start; padding: 6px 10px; border-radius: 6px; font-size: 13px; }
+.ws-errmenu button:hover, .ws-statusmenu button:hover { background: var(--accent-soft); color: var(--accent); }
+.ws-errgroup { display: flex; flex-direction: column; border-bottom: 1px solid var(--line); padding-bottom: 4px; margin-bottom: 4px; }
+.ws-errtitle { font-weight: 600; font-size: 12px; color: var(--muted); padding: 6px 10px 2px; }
+.ws-errhelp { font-size: 12.5px; line-height: 1.45; margin: 2px 10px 6px; color: var(--ink); }
+.ws-splitbar { position: absolute; pointer-events: auto; background: transparent; z-index: 5; }
+.ws-splitbar.h { cursor: row-resize; }
+.ws-splitbar.v { cursor: col-resize; }
+.ws-splitbar:hover { background: var(--accent); opacity: .5; }
+.ws-banner { position: absolute; box-sizing: border-box; z-index: 9; pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px;
+  background: var(--panel); border: 1px solid var(--accent); box-shadow: var(--shadow); font-size: 13px; flex-wrap: nowrap; height: 44px; }
+.ws-banner > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-banner > svg, .ws-banner button { flex: none; white-space: nowrap; }
+.ws-banner button.sm { display: inline-flex; align-items: center; gap: 5px; }
+.ws-pane { position: absolute; z-index: 7; width: 316px; display: flex; flex-direction: column; background: var(--panel); box-shadow: -8px 0 24px rgba(0,0,0,.08); pointer-events: auto; }
+.ws-pane.ws-right { border-inline-start: 1px solid var(--line); width: 330px; }
+.ws-pane.ws-left { border-inline-end: 1px solid var(--line); box-shadow: 8px 0 24px rgba(0,0,0,.08); }
+.ws-pane .phead { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.ws-pane .phead h2 { font-size: 15px; }
+.ws-search { display: flex; align-items: center; gap: 6px; margin: 8px 12px 4px; padding: 0 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--sheet); color: var(--muted); }
+.ws-search input { border: 0; background: transparent; flex: 1; height: 30px; outline: none; color: var(--ink); }
+.ws-pad { padding: 4px 12px; }
+.ws-tree { flex: 1; overflow: auto; padding: 4px 6px 12px; }
+.ws-node { display: flex; align-items: center; gap: 6px; width: 100%; text-align: start; border-radius: 6px; font-size: 13px; }
+.ws-node.sheet { padding: 2px 0; }
+.ws-node.sheet.on .ws-nodebtn { color: var(--accent); font-weight: 600; }
+.ws-nodebtn { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; padding: 4px 6px; border-radius: 6px; text-align: start; }
+.ws-nodebtn span:first-of-type { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-nodebtn:hover, .ws-node.item:hover { background: var(--accent-soft); }
+.ws-count { margin-inline-start: auto; font-size: 11px; color: var(--muted); }
+.ws-group { padding-inline-start: 26px; }
+.ws-grouplabel { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding: 6px 6px 2px; }
+.ws-node.item { padding: 4px 6px; color: var(--ink); }
+.ws-node.item .ws-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.ws-node.item .muted { flex: none; }
+.ws-empty { padding: 2px 0 6px 32px; }
+.ws-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.ws-tools button { display: inline-flex; align-items: center; gap: 6px; }
+.ws-num { width: 56px; height: 26px; margin: 0 4px; }
+.ws-list { flex: 1; overflow: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.ws-version { display: flex; align-items: center; gap: 4px; border: 1px solid var(--line); border-radius: 9px; background: var(--sheet); padding: 2px 4px 2px 0; }
+.ws-version.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.ws-version input { flex: 1; margin: 6px; height: 28px; }
+.ws-vmain { flex: 1; min-width: 0; display: flex; gap: 8px; align-items: flex-start; text-align: start; padding: 7px 8px; border-radius: 8px; }
+.ws-vmain > span { display: flex; flex-direction: column; min-width: 0; }
+.ws-vmain b { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-vmain svg { margin-top: 2px; flex: none; color: var(--accent); }
+.ws-vbtns { display: flex; }
+.ws-options { display: flex; flex-direction: column; gap: 8px; min-height: 340px; padding-top: 10px; }
+.ws-options h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 8px 0 0; }
+.ws-flags { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 12px; }
+.ws-error { color: #c92a2a; font-size: 13px; }
+.ws-viewlist { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 9px; max-height: 240px; overflow: auto; margin: 8px 0; }
+.ws-viewlist button { text-align: start; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.ws-viewlist button:last-child { border-bottom: 0; }
+.ws-viewlist button.on { background: var(--accent-soft); color: var(--accent); }
+.ws-viewlist em { color: var(--muted); font-style: normal; font-size: 12px; }
+.ws-viewlist input { width: 100%; }
+.ws-bottom { display: flex; align-items: flex-end; }
+.ws-swatches { margin-top: 6px; }
+.ws-statusmenu { position: fixed; z-index: 50; min-width: 210px; padding: 4px; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: 9px; box-shadow: var(--shadow); pointer-events: auto; }
+.ws-statusmenu button { display: flex; align-items: center; justify-content: flex-start; width: 100%; }
+.ws-tick { display: inline-block; width: 18px; color: var(--accent); }
+
+/* Bars the person turned off, and full screen (only the grid, formula bar, tabs and status bar stay). */
+:root[data-no-fbar] .formulabar { display: none; }
+:root[data-no-status] .status { display: none; }
+:root[data-fullscreen] .topbar, :root[data-fullscreen] .rail, :root[data-fullscreen] .toolpanel { display: none; }
+@media (max-width: 700px) { .ws-pane, .ws-pane.ws-right { width: min(100%, 316px); } .ws-flags { grid-template-columns: 1fr; } }

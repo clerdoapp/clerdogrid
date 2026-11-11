@@ -2,7 +2,8 @@ import { useRef, useState } from 'react';
 import type { InkStroke } from '../../model/workbook';
 import type { GridStore } from '../../app/store';
 import type { Viewport } from '../../ui/render';
-import { lastVp, toScreen, toSheet, ui } from './state';
+import { lastVp, toSheet, ui } from './state';
+import { panesOf } from '../../ui/render';
 import { addStroke, eraseStrokes, newId, strokesAt } from './ops';
 
 /** The default pen color shows as the sheet's ink color, so it stays visible in dark mode. */
@@ -109,20 +110,25 @@ export const InkLayer = ({ store, vp }: { store: GridStore; vp: Viewport }) => {
   };
 
   const strokes = live ? [...ink, live] : ink;
+  const panes = panesOf(vp);
   return (
     <svg ref={host} className={`inklayer${drawing ? ' on' : ''}`} width={vp.width} height={vp.height}
       style={{ position: 'absolute', left: 0, top: 0, pointerEvents: drawing ? 'auto' : 'none', touchAction: 'none', cursor: drawing ? (ui.tool === 'eraser' ? 'cell' : 'crosshair') : undefined }}
       onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={() => { active.current = null; setLive(null); setErasing(new Set()); }}
       onWheel={(e) => { const sc = document.querySelector('.gridwrap .scroller') as HTMLElement | null; if (sc && !e.ctrlKey) { sc.scrollLeft += e.deltaX; sc.scrollTop += e.deltaY; } }}>
-      <defs><clipPath id="inkclip"><rect x={vp.headerW} y={vp.headerH} width={Math.max(0, vp.width - vp.headerW)} height={Math.max(0, vp.height - vp.headerH)} /></clipPath></defs>
-      <g clipPath="url(#inkclip)">
-        {strokes.map((k) => {
-          const st = TOOL_STYLE[k.tool];
-          const pts = k.points.map(([x, y]) => toScreen(vp, x, y));
-          return <path key={k.id} className={k.tool === 'highlighter' ? 'hl' : undefined} d={pathOf(pts)} fill="none" stroke={k.color.toLowerCase() === DEFAULT_PEN ? 'var(--cell-ink)' : k.color}
-            strokeWidth={k.width * vp.zoom} strokeOpacity={erasing.has(k.id) ? 0.15 : st.opacity} strokeLinecap={st.cap} strokeLinejoin="round" />;
-        })}
-      </g>
+      {/* Each pane (frozen or split) draws the strokes it shows, clipped to itself and offset by its own scroll. */}
+      <defs>{panes.map((p, i) => <clipPath key={i} id={`inkclip${i}`}><rect x={p.x} y={p.y} width={Math.max(0, p.w)} height={Math.max(0, p.h)} /></clipPath>)}</defs>
+      {panes.map((p, i) => (
+        <g key={i} clipPath={`url(#inkclip${i})`}>
+          <g transform={p.m ? `translate(${p.x + p.w + p.scrollX * vp.zoom} ${p.y - p.scrollY * vp.zoom}) scale(${-vp.zoom} ${vp.zoom})` : `translate(${p.x - p.scrollX * vp.zoom} ${p.y - p.scrollY * vp.zoom}) scale(${vp.zoom})`}>
+            {strokes.map((k) => {
+              const st = TOOL_STYLE[k.tool];
+              return <path key={k.id} className={k.tool === 'highlighter' ? 'hl' : undefined} d={pathOf(k.points)} fill="none" stroke={k.color.toLowerCase() === DEFAULT_PEN ? 'var(--cell-ink)' : k.color}
+                strokeWidth={k.width} strokeOpacity={erasing.has(k.id) ? 0.15 : st.opacity} strokeLinecap={st.cap} strokeLinejoin="round" />;
+            })}
+          </g>
+        </g>
+      ))}
     </svg>
   );
 };

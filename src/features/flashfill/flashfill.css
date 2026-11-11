@@ -1,0 +1,3 @@
+.ff-ghost { position: absolute; pointer-events: none; color: var(--muted); background: var(--sheet); padding: 0 1px 3px; box-sizing: border-box; display: flex; align-items: flex-end; overflow: hidden; white-space: nowrap; }
+.ff-ghost.num { justify-content: flex-end; }
+.ff-tip { position: absolute; pointer-events: none; font-size: 12px; background: var(--panel); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); white-space: nowrap; }

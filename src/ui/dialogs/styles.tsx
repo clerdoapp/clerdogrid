@@ -5,6 +5,7 @@ import { currentRegion, looksLikeHeader } from '../../app/ops/data';
 import type { GridStore } from '../../app/store';
 import { Dialog, Field, type DialogProps } from './Dialog';
 import { Check, cleanStyle, cssOf, overlaps, parseRefs, rangeLabel, scalarText } from './shared';
+import { N, T, Tr } from '../i18n';
 
 // ---------- Cell styles ----------
 
@@ -18,36 +19,43 @@ const tint = (hex: string, t: number): string => {
 interface NamedStyle { name: string; group: string; style: CellStyle }
 
 export const NAMED_STYLES: NamedStyle[] = [
-  { name: 'Normal', group: 'Basic', style: {} },
-  { name: 'Good', group: 'Good, bad and neutral', style: { font: { color: '#006100' }, fill: { color: '#c6efce' } } },
-  { name: 'Bad', group: 'Good, bad and neutral', style: { font: { color: '#9c0006' }, fill: { color: '#ffc7ce' } } },
-  { name: 'Neutral', group: 'Good, bad and neutral', style: { font: { color: '#9c5700' }, fill: { color: '#ffeb9c' } } },
-  { name: 'Calculation', group: 'Data and model', style: { font: { bold: true, color: '#fa7d00' }, fill: { color: '#f2f2f2' }, border: { top: thin(), bottom: thin(), left: thin(), right: thin() } } },
-  { name: 'Check cell', group: 'Data and model', style: { font: { bold: true, color: '#ffffff' }, fill: { color: '#a5a5a5' }, border: { top: { style: 'double', color: '#3f3f3f' }, bottom: { style: 'double', color: '#3f3f3f' }, left: { style: 'double', color: '#3f3f3f' }, right: { style: 'double', color: '#3f3f3f' } } } },
-  { name: 'Explanatory', group: 'Data and model', style: { font: { italic: true, color: '#7f7f7f' } } },
-  { name: 'Input', group: 'Data and model', style: { font: { color: '#3f3f76' }, fill: { color: '#ffcc99' }, border: { top: thin(), bottom: thin(), left: thin(), right: thin() } } },
-  { name: 'Linked cell', group: 'Data and model', style: { font: { color: '#fa7d00' }, border: { bottom: { style: 'double', color: '#ff8001' } } } },
-  { name: 'Note', group: 'Data and model', style: { fill: { color: '#ffffcc' }, border: { top: thin('#b2b2b2'), bottom: thin('#b2b2b2'), left: thin('#b2b2b2'), right: thin('#b2b2b2') } } },
-  { name: 'Output', group: 'Data and model', style: { font: { bold: true, color: '#3f3f3f' }, fill: { color: '#f2f2f2' }, border: { top: thin('#3f3f3f'), bottom: thin('#3f3f3f'), left: thin('#3f3f3f'), right: thin('#3f3f3f') } } },
-  { name: 'Warning text', group: 'Data and model', style: { font: { color: '#ff0000' } } },
-  { name: 'Title', group: 'Titles and headings', style: { font: { size: 18, color: '#1f2a44', name: 'Calibri Light' } } },
-  { name: 'Heading 1', group: 'Titles and headings', style: { font: { bold: true, size: 15, color: '#1f2a44' }, border: { bottom: { style: 'thick', color: '#0C7A4B' } } } },
-  { name: 'Heading 2', group: 'Titles and headings', style: { font: { bold: true, size: 13, color: '#1f2a44' }, border: { bottom: { style: 'thick', color: '#a3b1ff' } } } },
-  { name: 'Heading 3', group: 'Titles and headings', style: { font: { bold: true, color: '#1f2a44' }, border: { bottom: { style: 'medium', color: '#a3b1ff' } } } },
-  { name: 'Heading 4', group: 'Titles and headings', style: { font: { bold: true, color: '#1f2a44' } } },
-  { name: 'Total', group: 'Titles and headings', style: { font: { bold: true }, border: { top: thin('#0C7A4B'), bottom: { style: 'double', color: '#0C7A4B' } } } },
+  { name: N('Normal'), group: N('Basic'), style: {} },
+  { name: N('Good'), group: N('Good, bad and neutral'), style: { font: { color: '#006100' }, fill: { color: '#c6efce' } } },
+  { name: N('Bad'), group: N('Good, bad and neutral'), style: { font: { color: '#9c0006' }, fill: { color: '#ffc7ce' } } },
+  { name: N('Neutral'), group: N('Good, bad and neutral'), style: { font: { color: '#9c5700' }, fill: { color: '#ffeb9c' } } },
+  { name: N('Calculation'), group: N('Data and model'), style: { font: { bold: true, color: '#fa7d00' }, fill: { color: '#f2f2f2' }, border: { top: thin(), bottom: thin(), left: thin(), right: thin() } } },
+  { name: N('Check cell'), group: N('Data and model'), style: { font: { bold: true, color: '#ffffff' }, fill: { color: '#a5a5a5' }, border: { top: { style: 'double', color: '#3f3f3f' }, bottom: { style: 'double', color: '#3f3f3f' }, left: { style: 'double', color: '#3f3f3f' }, right: { style: 'double', color: '#3f3f3f' } } } },
+  { name: N('Explanatory'), group: N('Data and model'), style: { font: { italic: true, color: '#7f7f7f' } } },
+  { name: N('Input'), group: N('Data and model'), style: { font: { color: '#3f3f76' }, fill: { color: '#ffcc99' }, border: { top: thin(), bottom: thin(), left: thin(), right: thin() } } },
+  { name: N('Linked cell'), group: N('Data and model'), style: { font: { color: '#fa7d00' }, border: { bottom: { style: 'double', color: '#ff8001' } } } },
+  { name: N('Note'), group: N('Data and model'), style: { fill: { color: '#ffffcc' }, border: { top: thin('#b2b2b2'), bottom: thin('#b2b2b2'), left: thin('#b2b2b2'), right: thin('#b2b2b2') } } },
+  { name: N('Output'), group: N('Data and model'), style: { font: { bold: true, color: '#3f3f3f' }, fill: { color: '#f2f2f2' }, border: { top: thin('#3f3f3f'), bottom: thin('#3f3f3f'), left: thin('#3f3f3f'), right: thin('#3f3f3f') } } },
+  { name: N('Warning text'), group: N('Data and model'), style: { font: { color: '#ff0000' } } },
+  { name: N('Title'), group: N('Titles and headings'), style: { font: { size: 18, color: '#1f2a44', name: 'Calibri Light' } } },
+  { name: N('Heading 1'), group: N('Titles and headings'), style: { font: { bold: true, size: 15, color: '#1f2a44' }, border: { bottom: { style: 'thick', color: '#0C7A4B' } } } },
+  { name: N('Heading 2'), group: N('Titles and headings'), style: { font: { bold: true, size: 13, color: '#1f2a44' }, border: { bottom: { style: 'thick', color: '#a3b1ff' } } } },
+  { name: N('Heading 3'), group: N('Titles and headings'), style: { font: { bold: true, color: '#1f2a44' }, border: { bottom: { style: 'medium', color: '#a3b1ff' } } } },
+  { name: N('Heading 4'), group: N('Titles and headings'), style: { font: { bold: true, color: '#1f2a44' } } },
+  { name: N('Total'), group: N('Titles and headings'), style: { font: { bold: true }, border: { top: thin('#0C7A4B'), bottom: { style: 'double', color: '#0C7A4B' } } } },
   ...ACCENTS.flatMap((c, i) => [
-    { name: `20% Accent ${i + 1}`, group: 'Accents', style: { fill: { color: tint(c, 0.8) } } },
-    { name: `40% Accent ${i + 1}`, group: 'Accents', style: { fill: { color: tint(c, 0.6) } } },
-    { name: `60% Accent ${i + 1}`, group: 'Accents', style: { font: { color: '#ffffff' }, fill: { color: tint(c, 0.4) } } },
-    { name: `Accent ${i + 1}`, group: 'Accents', style: { font: { color: '#ffffff' }, fill: { color: c } } },
+    { name: `20% Accent ${i + 1}`, group: N('Accents'), style: { fill: { color: tint(c, 0.8) } } },
+    { name: `40% Accent ${i + 1}`, group: N('Accents'), style: { fill: { color: tint(c, 0.6) } } },
+    { name: `60% Accent ${i + 1}`, group: N('Accents'), style: { font: { color: '#ffffff' }, fill: { color: tint(c, 0.4) } } },
+    { name: `Accent ${i + 1}`, group: N('Accents'), style: { font: { color: '#ffffff' }, fill: { color: c } } },
   ]),
-  { name: 'Comma', group: 'Number format', style: { numFmt: '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)' } },
-  { name: 'Comma [0]', group: 'Number format', style: { numFmt: '_(* #,##0_);_(* \\(#,##0\\);_(* "-"_);_(@_)' } },
-  { name: 'Currency', group: 'Number format', style: { numFmt: '_("$"* #,##0.00_);_("$"* \\(#,##0.00\\);_("$"* "-"??_);_(@_)' } },
-  { name: 'Currency [0]', group: 'Number format', style: { numFmt: '_("$"* #,##0_);_("$"* \\(#,##0\\);_("$"* "-"_);_(@_)' } },
-  { name: 'Percent', group: 'Number format', style: { numFmt: '0%' } },
+  { name: N('Comma'), group: N('Number format'), style: { numFmt: '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)' } },
+  { name: 'Comma [0]', group: N('Number format'), style: { numFmt: '_(* #,##0_);_(* \\(#,##0\\);_(* "-"_);_(@_)' } },
+  { name: N('Currency'), group: N('Number format'), style: { numFmt: '_("$"* #,##0.00_);_("$"* \\(#,##0.00\\);_("$"* "-"??_);_(@_)' } },
+  { name: 'Currency [0]', group: N('Number format'), style: { numFmt: '_("$"* #,##0_);_("$"* \\(#,##0\\);_("$"* "-"_);_(@_)' } },
+  { name: N('Percent'), group: N('Number format'), style: { numFmt: '0%' } },
 ];
+
+/** A built-in style's name in the interface language (the file keeps the English name). */
+const styleName = (n: string): string => {
+  const m = /^(?:(\d+)% )?Accent (\d)$/.exec(n);
+  if (m) return m[1] ? T('{pct}% Accent {n}', { pct: m[1], n: m[2]! }) : T('Accent {n}', { n: m[2]! });
+  return n.endsWith(' [0]') ? `${Tr(n.slice(0, -4))} [0]` : Tr(n);
+};
 
 export const CellStylesDialog = ({ store, close }: DialogProps) => {
   const groups = useMemo(() => [...new Set(NAMED_STYLES.map((s) => s.group))], []);
@@ -60,18 +68,18 @@ export const CellStylesDialog = ({ store, close }: DialogProps) => {
       if (ns.group !== 'Number format') { next.fill = ns.style.fill; next.border = ns.style.border; }
       if (ns.style.numFmt) next.numFmt = ns.style.numFmt;
       return cleanStyle(next);
-    }, `Style: ${ns.name}`);
+    }, N('Cell style'));
     close();
   };
   return (
-    <Dialog title="Cell styles" close={close} wide>
+    <Dialog title={T('Cell styles')} close={close} wide>
       {groups.map((g) => (
         <section key={g} className="b-section">
-          <h3 className="b-h3">{g}</h3>
+          <h3 className="b-h3">{Tr(g)}</h3>
           <div className="b-gallery">
             {NAMED_STYLES.filter((s) => s.group === g).map((s) => (
-              <button key={s.name} className="b-stylechip" style={{ ...cssOf(s.style), fontSize: s.style.font?.size && s.style.font.size > 13 ? 16 : 13 }} onClick={() => apply(s)} title={s.name}>
-                {s.group === 'Number format' ? <><span>{s.name}</span><span className="muted small">{s.name.startsWith('Percent') ? '12%' : s.name.startsWith('Currency') ? '$ 1,234' : '1,234'}</span></> : s.name}
+              <button key={s.name} className="b-stylechip" style={{ ...cssOf(s.style), fontSize: s.style.font?.size && s.style.font.size > 13 ? 16 : 13 }} onClick={() => apply(s)} title={styleName(s.name)}>
+                {s.group === 'Number format' ? <><span>{styleName(s.name)}</span><span className="muted small">{s.name.startsWith('Percent') ? '12%' : s.name.startsWith('Currency') ? '$ 1,234' : '1,234'}</span></> : styleName(s.name)}
               </button>
             ))}
           </div>
@@ -90,6 +98,12 @@ const look = (kind: 'Light' | 'Medium' | 'Dark', i: number, c: string): TableLoo
   : kind === 'Medium'
     ? { id: `TableStyleMedium${i}`, label: `Medium ${i}`, header: c, headerInk: '#ffffff', band: tint(c, 0.8), line: tint(c, 0.5) }
     : { id: `TableStyleDark${i}`, label: `Dark ${i}`, header: '#1f2430', headerInk: '#ffffff', band: tint(c, 0.25), line: c, dark: true };
+
+const lookName = (label: string): string => {
+  const m = /^(Light|Medium|Dark) (\d+)$/.exec(label);
+  if (!m) return Tr(label);
+  return m[1] === 'Light' ? T('Light {n}', { n: m[2]! }) : m[1] === 'Medium' ? T('Medium {n}', { n: m[2]! }) : T('Dark {n}', { n: m[2]! });
+};
 
 export const TABLE_LOOKS: TableLook[] = [
   look('Light', 1, '#3f3f46'), look('Light', 2, '#0C7A4B'), look('Light', 3, '#e8590c'), look('Light', 4, '#1c9a5b'),
@@ -152,21 +166,21 @@ export const TableDialog = ({ store, close }: DialogProps) => {
 
   const ok = () => {
     const parsed = parseRefs(store, ref);
-    if (!parsed || parsed.ranges.length !== 1 || parsed.sheet !== store.sheetIndex) { store.notify('Enter a range on this sheet, like A1:D20.'); return false; }
+    if (!parsed || parsed.ranges.length !== 1 || parsed.sheet !== store.sheetIndex) { store.notify(T('Enter a range on this sheet, like A1:D20.')); return false; }
     let r = parsed.ranges[0]!;
     const b = store.engine.usedBounds(store.sheetIndex);
     if (r.r2 === MAX_ROWS - 1) r = { ...r, r2: Math.max(r.r1, b.rows) };
     if (r.c2 === MAX_COLS - 1) r = { ...r, c2: Math.max(r.c1, b.cols) };
-    if ((r.r2 - r.r1 + 1) * (r.c2 - r.c1 + 1) > MAX_TABLE_CELLS) { store.notify('That range is too big for a table.'); return false; }
+    if ((r.r2 - r.r1 + 1) * (r.c2 - r.c1 + 1) > MAX_TABLE_CELLS) { store.notify(T('That range is too big for a table.')); return false; }
     const others = store.sheet.tables.filter((t) => t !== existing);
-    if (others.some((t) => overlaps(t.range, r))) { store.notify("A table can't overlap another table."); return false; }
-    if (store.sheet.merges.some((m) => overlaps(m, r))) { store.notify("A table can't contain merged cells. Unmerge them first."); return false; }
+    if (others.some((t) => overlaps(t.range, r))) { store.notify(T('A table can\'t overlap another table.')); return false; }
+    if (store.sheet.merges.some((m) => overlaps(m, r))) { store.notify(T('A table can\'t contain merged cells. Unmerge them first.')); return false; }
     const lk = TABLE_LOOKS.find((l) => l.id === lookId) ?? TABLE_LOOKS[4]!;
     const rowFree = (row: number) => row < MAX_ROWS && Array.from({ length: r.c2 - r.c1 + 1 }, (_, j) => store.value(row, r.c1 + j)).every((v) => v === null);
     const needsRowBelow = (!existing && !headers && (r.r1 === 0 || !rowFree(r.r1 - 1))) || (totals && !(existing?.totalsRow ?? false));
-    if (needsRowBelow && !rowFree(r.r2 + 1)) { store.notify('The row below the data needs to be empty for the new row. Insert a row there first.'); return false; }
+    if (needsRowBelow && !rowFree(r.r2 + 1)) { store.notify(T('The row below the data needs to be empty for the new row. Insert a row there first.')); return false; }
     const sheetIdx = store.sheetIndex;
-    store.change(existing ? 'Table options' : 'Format as table', 'sheet', () => {
+    store.change(existing ? N('Table options') : N('Format as table'), 'sheet', () => {
       // Without headers, insert a header row above the data (as when the first row is data).
       if (!headers && !existing) {
         if (r.r1 === 0 || [...Array(r.c2 - r.c1 + 1)].some((_, j) => store.value(r.r1 - 1, r.c1 + j) !== null)) {
@@ -223,32 +237,32 @@ export const TableDialog = ({ store, close }: DialogProps) => {
       else if (store.sheet.autoFilter && overlaps(store.sheet.autoFilter.range, r)) store.sheet.autoFilter = undefined;
       store.engine.recalc(true);
     });
-    store.notify(existing ? `Updated ${existing.name}.` : `Made a table from ${rangeLabel(r)}.`);
+    store.notify(existing ? T('Updated {name}.', { name: existing.name }) : T('Made a table from {p0}.', { p0: rangeLabel(r) }));
     return true;
   };
 
   const lk = TABLE_LOOKS.find((l) => l.id === lookId);
   return (
-    <Dialog title={existing ? `Table: ${existing.name}` : 'Format as table'} close={close} onOk={ok} okLabel={existing ? 'Apply' : 'Create'} wide>
+    <Dialog title={existing ? T('Table: {name}', { name: existing.name }) : T('Format as table')} close={close} onOk={ok} okLabel={existing ? T('Apply') : T('Create')} wide>
       <div className="grid2">
-        <Field label="Data range"><input value={ref} disabled={!!existing} onChange={(e) => setRef(e.target.value)} placeholder="A1:D20" /></Field>
+        <Field label={T('Data range')}><input value={ref} disabled={!!existing} onChange={(e) => setRef(e.target.value)} placeholder="A1:D20" /></Field>
         <div className="b-checks b-pad">
-          <Check label="My table has headers" checked={headers} disabled={!!existing} onChange={setHeaders} />
+          <Check label={T('My table has headers')} checked={headers} disabled={!!existing} onChange={setHeaders} />
         </div>
       </div>
-      <Field label="Style">
+      <Field label={T('Style')}>
         <div className="b-gallery b-tables" role="listbox">
-          {TABLE_LOOKS.map((t) => <button key={t.id} role="option" aria-selected={t.id === lookId} aria-label={t.label} title={t.label} className={`b-tablechip${t.id === lookId ? ' on' : ''}`} onClick={() => setLookId(t.id)}><TableSwatch t={t} /></button>)}
+          {TABLE_LOOKS.map((t) => <button key={t.id} role="option" aria-selected={t.id === lookId} aria-label={lookName(t.label)} title={lookName(t.label)} className={`b-tablechip${t.id === lookId ? ' on' : ''}`} onClick={() => setLookId(t.id)}><TableSwatch t={t} /></button>)}
         </div>
       </Field>
       <div className="b-checks">
-        <Check label="Header row" checked disabled onChange={() => undefined} />
-        <Check label="Totals row" checked={totals} onChange={setTotals} />
-        <Check label="Banded rows" checked={bandRows} onChange={setBandRows} />
-        <Check label="Banded columns" checked={bandCols} onChange={setBandCols} />
-        <Check label="Filter buttons" checked={filter} onChange={setFilter} />
+        <Check label={T('Header row')} checked disabled onChange={() => undefined} />
+        <Check label={T('Totals row')} checked={totals} onChange={setTotals} />
+        <Check label={T('Banded rows')} checked={bandRows} onChange={setBandRows} />
+        <Check label={T('Banded columns')} checked={bandCols} onChange={setBandCols} />
+        <Check label={T('Filter buttons')} checked={filter} onChange={setFilter} />
       </div>
-      {lk && <p className="muted small">{lk.label}. Columns are named from the first row{!headers && !existing ? ` (a header row Column1, Column2… is added)` : ''}. Totals use SUBTOTAL so filtered rows are left out.</p>}
+      {lk && <p className="muted small">{lookName(lk.label)}. {!headers && !existing ? T('Columns are named from the first row (a header row Column1, Column2… is added).') : T('Columns are named from the first row.')} {T('Totals use SUBTOTAL so filtered rows are left out.')}</p>}
     </Dialog>
   );
 };

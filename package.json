@@ -19,7 +19,9 @@
     "electron:compile": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --external:electron --outdir=dist-electron --out-extension:.js=.cjs",
     "dist": "npm run build && npm run electron:compile && electron-builder --publish never",
     "examples": "vite-node scripts/examples.ts",
-    "docs:functions": "vite-node scripts/functions-doc.ts"
+    "docs:functions": "vite-node scripts/functions-doc.ts",
+    "cli": "node src/cli/build.mjs",
+    "contributors": "node scripts/contributors.mjs"
   },
   "dependencies": {
     "@fontsource/arimo": "^5.0.0",
@@ -30,7 +32,11 @@
     "@fontsource/inter": "^5.3.0",
     "@fontsource/lato": "^5.3.0",
     "@fontsource/montserrat": "^5.3.0",
+    "@fontsource/noto-emoji": "^5.3.2",
     "@fontsource/noto-naskh-arabic": "^5.0.0",
+    "@fontsource/noto-sans-jp": "^5.3.1",
+    "@fontsource/noto-sans-kr": "^5.3.1",
+    "@fontsource/noto-sans-sc": "^5.3.1",
     "@fontsource/open-sans": "^5.3.0",
     "@fontsource/roboto": "^5.3.0",
     "@fontsource/roboto-mono": "^5.3.0",
@@ -85,6 +91,42 @@
         "name": "Workbook template",
         "role": "Editor",
         "mimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.template"
+      },
+      {
+        "ext": "xlsb",
+        "name": "Binary workbook",
+        "role": "Editor",
+        "mimeType": "application/vnd.ms-excel.sheet.binary.macroEnabled.12"
+      },
+      {
+        "ext": "xltm",
+        "name": "Workbook template",
+        "role": "Editor",
+        "mimeType": "application/vnd.ms-excel.template.macroEnabled.12"
+      },
+      {
+        "ext": "xls",
+        "name": "Older workbook",
+        "role": "Editor",
+        "mimeType": "application/vnd.ms-excel"
+      },
+      {
+        "ext": "xlt",
+        "name": "Older workbook template",
+        "role": "Editor",
+        "mimeType": "application/vnd.ms-excel"
+      },
+      {
+        "ext": "ods",
+        "name": "OpenDocument spreadsheet",
+        "role": "Editor",
+        "mimeType": "application/vnd.oasis.opendocument.spreadsheet"
+      },
+      {
+        "ext": "ots",
+        "name": "OpenDocument template",
+        "role": "Editor",
+        "mimeType": "application/vnd.oasis.opendocument.spreadsheet-template"
       },
       {
         "ext": "csv",
@@ -171,7 +213,7 @@
       "maintainer": "Clerdo",
       "icon": "assets/app-icon/clerdogrid-1024.png",
       "synopsis": "Free, open-source spreadsheet app",
-      "description": "Calculate, analyse and chart data. Opens and saves .xlsx and .csv.",
+      "description": "Calculate, analyse and chart data. Opens and saves .xlsx, .ods, .xls and .csv, and opens .xlsb.",
       "desktop": {
         "Name": "ClerdoGrid",
         "GenericName": "Spreadsheet",

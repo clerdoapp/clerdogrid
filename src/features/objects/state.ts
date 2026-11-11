@@ -1,7 +1,7 @@
 // UI state for the objects feature (not saved, not undoable) plus screen geometry helpers.
 import type { Chart } from '../../model/workbook';
 import type { GridStore } from '../../app/store';
-import { paneFor, panesOf, rectIn, type Viewport } from '../../ui/render';
+import { anchorBox, paneFor, panesOf, rectIn, screenToSheet, sheetToScreen, type Viewport } from '../../ui/render';
 
 export type DrawTool = 'select' | 'pen' | 'marker' | 'highlighter' | 'eraser';
 
@@ -30,10 +30,7 @@ export const setUi = (store: GridStore, patch: Partial<typeof ui>): void => { Ob
 export type Box = { left: number; top: number; width: number; height: number };
 
 /** Screen box (relative to the grid) of an anchored object. */
-export const place = (vp: Viewport, a: Chart['anchor']): Box => {
-  const r = rectIn(paneFor(panesOf(vp), vp, a.row, a.col), vp, { r1: a.row, c1: a.col, r2: a.row, c2: a.col });
-  return { left: r.x + a.dx * vp.zoom, top: r.y + a.dy * vp.zoom, width: a.width * vp.zoom, height: a.height * vp.zoom };
-};
+export const place = (vp: Viewport, a: Chart['anchor']): Box => anchorBox(vp, a);
 
 export const cellBox = (vp: Viewport, row: number, col: number, store: GridStore): Box => {
   const m = store.mergeAt(row, col) ?? { r1: row, c1: col, r2: row, c2: col };
@@ -51,23 +48,19 @@ export const anchorAt = (vp: Viewport, x: number, y: number, width: number, heig
   return { col, row, dx: Math.round(cx - vp.layout.cols.start(col)), dy: Math.round(cy - vp.layout.rows.start(row)), width: Math.max(4, Math.round(width)), height: Math.max(2, Math.round(height)) };
 };
 
-/** Sheet pixels (100% zoom) to screen pixels relative to the grid, honouring frozen panes. */
-export const toScreen = (vp: Viewport, sx: number, sy: number): [number, number] => {
-  const fw = vp.layout.cols.start(vp.frozenCols), fh = vp.layout.rows.start(vp.frozenRows);
-  const x = sx < fw ? vp.headerW + sx * vp.zoom : vp.headerW + fw * vp.zoom + (sx - fw - vp.scrollX) * vp.zoom;
-  const y = sy < fh ? vp.headerH + sy * vp.zoom : vp.headerH + fh * vp.zoom + (sy - fh - vp.scrollY) * vp.zoom;
-  return [x, y];
-};
+/**
+ * Sheet pixels (100% zoom) to screen pixels relative to the grid, honouring frozen and split panes: the point is
+ * placed in the pane that shows it (the main pane first), or in the main pane when none does.
+ */
+export const toScreen = (vp: Viewport, sx: number, sy: number): [number, number] => sheetToScreen(vp, sx, sy);
 
-export const toSheet = (vp: Viewport, x: number, y: number): [number, number] => {
-  const fw = vp.layout.cols.start(vp.frozenCols), fh = vp.layout.rows.start(vp.frozenRows);
-  const lx = (x - vp.headerW) / vp.zoom, ly = (y - vp.headerH) / vp.zoom;
-  return [lx < fw ? lx : lx + vp.scrollX, ly < fh ? ly : ly + vp.scrollY];
-};
+/** Screen pixels relative to the grid to sheet pixels, using the pane under the point. */
+export const toSheet = (vp: Viewport, x: number, y: number): [number, number] => screenToSheet(vp, x, y);
 
 /** Top-left of the visible cells in sheet pixels, for placing new objects. */
 export const visibleOrigin = (vp: Viewport): { x: number; y: number } => {
-  const [x, y] = toSheet(vp, vp.headerW + vp.layout.cols.start(vp.frozenCols) * vp.zoom, vp.headerH + vp.layout.rows.start(vp.frozenRows) * vp.zoom);
+  const lx = vp.headerW + vp.layout.cols.start(vp.frozenCols) * vp.zoom;
+  const [x, y] = toSheet(vp, vp.rtl ? vp.width - lx : lx, vp.headerH + vp.layout.rows.start(vp.frozenRows) * vp.zoom);
   return { x, y };
 };
 

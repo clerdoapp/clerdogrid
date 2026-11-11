@@ -1,4 +1,5 @@
 import { useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { N, Tr } from '../../ui/i18n';
 
 const KEYWORDS = new Set(('break case catch class const continue debugger default delete do else export extends finally for function if import in instanceof let new of return '
   + 'super switch this throw try typeof var void while with yield async await static get set').split(' '));
@@ -25,7 +26,7 @@ export const highlight = (code: string): ReactNode[] => {
 const INDENT = '  ';
 
 /** A plain textarea with line numbers and a coloured layer underneath; no editor library. */
-export const CodeEditor = ({ value, onChange, errorLine, onRun, onSave, label = 'Script code', readOnly }: {
+export const CodeEditor = ({ value, onChange, errorLine, onRun, onSave, label = N('Script code'), readOnly }: {
   value: string; onChange: (v: string) => void; errorLine?: number; onRun?: () => void; onSave?: () => void; label?: string; readOnly?: boolean;
 }) => {
   const ta = useRef<HTMLTextAreaElement>(null);
@@ -92,7 +93,7 @@ export const CodeEditor = ({ value, onChange, errorLine, onRun, onSave, label = 
       </div>
       <div className="au-code">
         <pre className="au-layer" ref={layer} aria-hidden="true">{colored}{'\n'}</pre>
-        <textarea ref={ta} value={value} spellCheck={false} autoCapitalize="off" autoComplete="off" autoCorrect="off" wrap="off" aria-label={label} readOnly={readOnly}
+        <textarea ref={ta} value={value} spellCheck={false} autoCapitalize="off" autoComplete="off" autoCorrect="off" wrap="off" aria-label={Tr(label)} readOnly={readOnly}
           onChange={(e) => onChange(e.target.value)} onKeyDown={onKey} onScroll={sync} />
       </div>
     </div>

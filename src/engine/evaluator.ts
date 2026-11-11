@@ -1,6 +1,7 @@
 import { compareValues, first, numberToText, toBool, toNumber, toText } from './coerce';
 import { parseFormula, FormulaError, type Node, type RefNode } from './parser';
 import { getFunction } from './registry';
+import { trimRange } from './trimref';
 import {
   CellError, Err, isError, isLambda, isMatrix, isRef, isRefs, MAX_COLS, MAX_ROWS, ref,
   type FnContext, type FunctionDef, type LambdaValue, type Matrix, type RangeRef, type Scalar, type Value,
@@ -23,6 +24,7 @@ export interface Host {
   rowFiltered(sheet: number, row: number): boolean;
   isSubtotalCell(sheet: number, row: number, col: number): boolean;
   numberFormat(sheet: number, row: number, col: number): string;
+  pivotData?(sheet: number, row: number, col: number, dataField: string, pairs: [string, Scalar][]): Scalar;
   readonly date1904: boolean;
 }
 
@@ -88,6 +90,7 @@ export class Evaluator {
       rowFiltered: (s, r) => host.rowFiltered(s, r),
       isSubtotalCell: (s, r, c) => host.isSubtotalCell(s, r, c),
       numberFormat: (s, r, c) => host.numberFormat(s, r, c),
+      pivotData: (s, r, c, d, p) => (host.pivotData ? host.pivotData(s, r, c, d, p) : Err.ref),
     };
   }
 
@@ -119,7 +122,10 @@ export class Evaluator {
       for (let s = Math.min(s1, s2); s <= Math.max(s1, s2); s++) areas.push(ref(s, n.r1, n.c1, n.r2, n.c2));
       return { kind: 'refs', areas };
     }
-    return ref(s1, n.r1, n.c1, n.r2, n.c2);
+    const r = ref(s1, n.r1, n.c1, n.r2, n.c2);
+    if (!n.trim) return r;
+    const mode = n.trim === 'all' ? 3 : n.trim === 'leading' ? 1 : 2;
+    return trimRange(r, this.ctxFor(f), mode, mode);
   }
 
   eval(n: Node, f: Frame): Value {
@@ -181,7 +187,7 @@ export class Evaluator {
     // A function name used as a value, e.g. =BYROW(A1:C3, SUM): it behaves like LAMBDA(x, SUM(x)).
     const def = !sheetName ? getFunction(name) : undefined;
     if (def) {
-      const lam: LambdaValue = { kind: 'lambda', params: ['x'], invoke: (vals) => (vals.length < def.min || vals.length > def.max ? Err.value : this.apply(def, vals, f)) };
+      const lam: LambdaValue = { kind: 'lambda', params: ['x'], label: def.name, invoke: (vals) => (vals.length < def.min || vals.length > def.max ? Err.value : this.apply(def, vals, f)) };
       return lam;
     }
     return new CellError('#NAME?', name);

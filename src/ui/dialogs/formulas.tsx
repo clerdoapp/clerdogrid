@@ -7,6 +7,7 @@ import { addr, keyCol, keyRow, parseAddr, type CellRange, type DefinedName } fro
 import type { GridStore } from '../../app/store';
 import { Dialog, Field, type DialogProps } from './Dialog';
 import { goTo, rangeLabel, resultText, sheetRef } from './shared';
+import { N, T, Tr } from '../i18n';
 
 const evalText = (store: GridStore, text: string, sheet = store.sheetIndex): { ok: boolean; text: string; value?: Scalar | Matrix } => {
   if (!text.trim()) return { ok: true, text: '' };
@@ -16,13 +17,15 @@ const evalText = (store: GridStore, text: string, sheet = store.sheetIndex): { o
     const v = store.engine.evaluate(text, sheet, row, col);
     return { ok: true, text: resultText(v), value: v };
   } catch {
-    return { ok: false, text: 'Not a valid formula yet' };
+    return { ok: false, text: N('Not a valid formula yet') };
   }
 };
 
 // ---------- Insert function ----------
 
 const CATEGORIES: (FnCategory | 'All' | 'Recent')[] = ['All', 'Recent', 'Financial', 'Date & Time', 'Math & Trig', 'Statistical', 'Lookup & Reference', 'Database', 'Text', 'Logical', 'Information', 'Engineering', 'Web', 'Compatibility'];
+/** Category names for the catalogue (the ids stay English). */
+export const CATEGORY_LABELS = [N('All'), N('Recent'), N('Financial'), N('Date & Time'), N('Math & Trig'), N('Statistical'), N('Lookup & Reference'), N('Database'), N('Text'), N('Logical'), N('Information'), N('Engineering'), N('Web'), N('Compatibility')];
 const RECENT_KEY = 'clerdogrid.recentFunctions';
 const readRecent = (): string[] => { try { const v = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]'); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, 10) : []; } catch { return []; } };
 const pushRecent = (name: string) => { try { localStorage.setItem(RECENT_KEY, JSON.stringify([name, ...readRecent().filter((n) => n !== name)].slice(0, 10))); } catch { /* storage unavailable */ } };
@@ -92,7 +95,7 @@ export const InsertFunctionDialog = ({ store, data, close }: DialogProps<{ categ
     const call = buildCall(cur, values, slots);
     const res = evalText(store, call);
     return (
-      <Dialog title={cur.name} close={close} onOk={insert} okLabel="Insert" width={560} footer={<button onClick={() => setStep('pick')}>Back</button>}>
+      <Dialog title={cur.name} close={close} onOk={insert} okLabel={T('Insert')} width={560} footer={<button onClick={() => setStep('pick')}>{T('Back')}</button>}>
         <p className="muted small">{cur.about}</p>
         <div className="b-args">
           {slots.map((a, i) => {
@@ -107,7 +110,7 @@ export const InsertFunctionDialog = ({ store, data, close }: DialogProps<{ categ
               </div>
             );
           })}
-          {!slots.length && <p className="muted small">This function has no arguments.</p>}
+          {!slots.length && <p className="muted small">{T('This function has no arguments.')}</p>}
         </div>
         <div className="preview b-fxprev"><span className="mono">={call}</span><span className="grow" /><span className={res.ok ? '' : 'b-bad'}>{res.text ? `= ${res.text}` : ''}</span></div>
       </Dialog>
@@ -115,22 +118,22 @@ export const InsertFunctionDialog = ({ store, data, close }: DialogProps<{ categ
   }
 
   return (
-    <Dialog title="Insert function" close={close} wide okLabel="Next" onOk={() => { if (cur) { setPicked(cur); setValues([]); setStep('args'); } return false; }}>
+    <Dialog title={T('Insert function')} close={close} wide okLabel={T('Next')} onOk={() => { if (cur) { setPicked(cur); setValues([]); setStep('args'); } return false; }}>
       <div className="b-fnsearch">
-        <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setPicked(null); }} placeholder="Search functions, like sum or date" aria-label="Search functions" />
-        <select value={cat} onChange={(e) => { setCat(e.target.value); setPicked(null); }} aria-label="Category">{CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+        <input autoFocus value={q} onChange={(e) => { setQ(e.target.value); setPicked(null); }} placeholder={T('Search functions, like sum or date')} aria-label={T('Search functions')} />
+        <select value={cat} onChange={(e) => { setCat(e.target.value); setPicked(null); }} aria-label={T('Category')}>{CATEGORIES.map((c) => <option key={c} value={c}>{Tr(c)}</option>)}</select>
       </div>
       <div className="b-split b-fnsplit">
-        <div className="b-list b-fnlist" role="listbox" aria-label="Functions">
+        <div className="b-list b-fnlist" role="listbox" aria-label={T('Functions')}>
           {list.map((f) => <button key={f.name} role="option" aria-selected={cur?.name === f.name} className={cur?.name === f.name ? 'on' : ''} onClick={() => setPicked(f)} onDoubleClick={() => { setPicked(f); setValues([]); setStep('args'); }}>{f.name}</button>)}
-          {!list.length && <div className="muted pad">Nothing matches.</div>}
+          {!list.length && <div className="muted pad">{T('Nothing matches.')}</div>}
         </div>
         <div className="b-col b-fninfo">
           {cur && <>
             <div className="mono b-sig">{signature(cur)}</div>
             <p>{cur.about}</p>
-            <p className="muted small">{cur.category}{cur.returns ? ` · returns ${cur.returns}` : ''}</p>
-            <ul className="b-arglist">{cur.args.map((a, i) => <li key={i}><b>{a.name}</b>{a.optional || a.repeat ? ' (optional)' : ''}: {a.about}</li>)}</ul>
+            <p className="muted small">{cur.category}{cur.returns ? T(' · returns {returns}', { returns: cur.returns }) : ''}</p>
+            <ul className="b-arglist">{cur.args.map((a, i) => <li key={i}><b>{a.name}</b>{a.optional || a.repeat ? T(' (optional)') : ''}: {a.about}</li>)}</ul>
           </>}
         </div>
       </div>
@@ -142,13 +145,13 @@ export const InsertFunctionDialog = ({ store, data, close }: DialogProps<{ categ
 
 const RESERVED = /^(TRUE|FALSE|R|C|R\d*C\d*)$/i;
 export const nameError = (store: GridStore, name: string, scope: number | undefined, except?: DefinedName): string | null => {
-  if (!name) return 'Enter a name.';
-  if (name.length > 255) return 'A name can be at most 255 characters.';
-  if (!/^[A-Za-z_\\À-￿][A-Za-z0-9_.\\À-￿]*$/.test(name)) return 'Start with a letter or underscore, and use only letters, numbers, periods and underscores (no spaces).';
-  if (parseAddr(name) || /^[A-Za-z]{1,3}\d+$/.test(name) || RESERVED.test(name)) return "A name can't look like a cell address.";
+  if (!name) return T('Enter a name.');
+  if (name.length > 255) return T('A name can be at most 255 characters.');
+  if (!/^[A-Za-z_\\À-￿][A-Za-z0-9_.\\À-￿]*$/.test(name)) return T('Start with a letter or underscore, and use only letters, numbers, periods and underscores (no spaces).');
+  if (parseAddr(name) || /^[A-Za-z]{1,3}\d+$/.test(name) || RESERVED.test(name)) return T("A name can't look like a cell address.");
   const clash = store.wb.names.find((n) => n !== except && n.name.toLowerCase() === name.toLowerCase() && n.sheet === scope);
-  if (clash) return `"${name}" is already used${scope === undefined ? ' in this workbook' : ' on that sheet'}.`;
-  if (store.wb.sheets.some((s) => s.tables.some((t) => t.name.toLowerCase() === name.toLowerCase()))) return 'A table already uses that name.';
+  if (clash) return scope === undefined ? T('"{name}" is already used in this workbook.', { name }) : T('"{name}" is already used on that sheet.', { name });
+  if (store.wb.sheets.some((s) => s.tables.some((t) => t.name.toLowerCase() === name.toLowerCase()))) return T('A table already uses that name.');
   return null;
 };
 
@@ -178,9 +181,9 @@ const NameEditor = ({ store, initial, onDone, onCancel }: { store: GridStore; in
     const err = nameError(store, n, sc, initial);
     if (err) { store.notify(err); return false; }
     const f = refers.trim().replace(/^=/, '');
-    if (!f) { store.notify('Enter what the name refers to, like =Sheet1!$A$1:$A$9.'); return false; }
-    try { parseFormula(f); } catch { store.notify('"Refers to" has a problem. Check brackets, quotes and sheet names.'); return false; }
-    store.change(initial ? 'Edit name' : 'Define name', 'book', () => {
+    if (!f) { store.notify(T('Enter what the name refers to, like =Sheet1!$A$1:$A$9.')); return false; }
+    try { parseFormula(f); } catch { store.notify(T('"Refers to" has a problem. Check brackets, quotes and sheet names.')); return false; }
+    store.change(initial ? N('Edit name') : N('Define name'), 'book', () => {
       const entry: DefinedName = { name: n, formula: f, sheet: sc, comment: comment.trim() || undefined, hidden: initial?.hidden };
       if (initial) {
         const i = store.wb.names.findIndex((x) => x.name === initial.name && x.sheet === initial.sheet);
@@ -194,12 +197,12 @@ const NameEditor = ({ store, initial, onDone, onCancel }: { store: GridStore; in
     return true;
   };
   return (
-    <Dialog title={initial ? 'Edit name' : 'New name'} close={onCancel ?? onDone} onOk={save} width={460} footer={onCancel ? <button onClick={onCancel}>Back</button> : undefined}>
-      <Field label="Name"><input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="SalesTotal" /></Field>
-      <Field label="Scope"><select value={scope} onChange={(e) => setScope(+e.target.value)}><option value={-1}>Workbook</option>{store.wb.sheets.map((s, i) => <option key={i} value={i}>{s.name}</option>)}</select></Field>
-      <Field label="Refers to"><input className="mono" value={refers} onChange={(e) => setRefers(e.target.value)} /></Field>
-      <div className="muted small">Value: {preview.text || '—'}</div>
-      <Field label="Comment"><textarea value={comment} maxLength={255} onChange={(e) => setComment(e.target.value)} /></Field>
+    <Dialog title={initial ? T('Edit name') : T('New name')} close={onCancel ?? onDone} onOk={save} width={460} footer={onCancel ? <button onClick={onCancel}>{T('Back')}</button> : undefined}>
+      <Field label={T('Name')}><input autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder={T('SalesTotal')} /></Field>
+      <Field label={T('Scope')}><select value={scope} onChange={(e) => setScope(+e.target.value)}><option value={-1}>{T('Workbook')}</option>{store.wb.sheets.map((s, i) => <option key={i} value={i}>{s.name}</option>)}</select></Field>
+      <Field label={T('Refers to')}><input className="mono" value={refers} onChange={(e) => setRefers(e.target.value)} /></Field>
+      <div className="muted small">{T('Value:')}{' '}{preview.text || '—'}</div>
+      <Field label={T('Comment')}><textarea value={comment} maxLength={255} onChange={(e) => setComment(e.target.value)} /></Field>
     </Dialog>
   );
 };
@@ -217,7 +220,7 @@ export const NamesDialog = ({ store, close }: DialogProps) => {
       && (filter === 'all' || (filter === 'book' && n.sheet === undefined) || (filter === 'sheet' && n.sheet !== undefined) || (filter === 'errors' && (!v.ok || (v.value !== undefined && !isMatrix(v.value) && isError(v.value))))));
   if (edit) return <NameEditor store={store} initial={edit.name} onDone={() => { setEdit(null); bump((x) => x + 1); }} onCancel={() => setEdit(null)} />;
   const remove = (n: DefinedName) => {
-    store.change('Delete name', 'book', () => {
+    store.change(N('Delete name'), 'book', () => {
       store.wb.names = store.wb.names.filter((x) => x !== n);
       store.engine.sheetsChanged();
       store.engine.recalc(true);
@@ -225,28 +228,28 @@ export const NamesDialog = ({ store, close }: DialogProps) => {
     bump((x) => x + 1);
   };
   return (
-    <Dialog title="Names" close={close} wide footer={<button onClick={() => setEdit({})}><Plus size={15} strokeWidth={1.9} /> New name</button>}>
+    <Dialog title={T('Names')} close={close} wide footer={<button onClick={() => setEdit({})}><Plus size={15} strokeWidth={1.9} />{' '}{T('New name')}</button>}>
       <div className="b-inline">
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter by name" aria-label="Filter by name" />
-        <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label="Show">
-          <option value="all">All names</option><option value="book">Workbook scope</option><option value="sheet">Sheet scope</option><option value="errors">With errors</option>
+        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={T('Filter by name')} aria-label={T('Filter by name')} />
+        <select value={filter} onChange={(e) => setFilter(e.target.value as typeof filter)} aria-label={T('Show')}>
+          <option value="all">{T('All names')}</option><option value="book">{T('Workbook scope')}</option><option value="sheet">{T('Sheet scope')}</option><option value="errors">{T('With errors')}</option>
         </select>
       </div>
       <div className="b-table" role="table">
-        <div className="b-tr b-th b-namerow" role="row"><span>Name</span><span>Value</span><span>Refers to</span><span>Scope</span><span /></div>
+        <div className="b-tr b-th b-namerow" role="row"><span>{T('Name')}</span><span>{T('Value')}</span><span>{T('Refers to')}</span><span>{T('Scope')}</span><span /></div>
         {rows.map(({ n, v }) => (
           <div key={`${n.name}:${n.sheet ?? ''}`} className="b-tr b-namerow" role="row" title={n.comment}>
             <span className="b-ellip"><b>{n.name}</b></span>
             <span className="b-ellip">{v.text}</span>
             <span className="b-ellip mono">={n.formula}</span>
-            <span className="b-ellip">{n.sheet === undefined ? 'Workbook' : store.wb.sheets[n.sheet]?.name ?? '?'}</span>
+            <span className="b-ellip">{n.sheet === undefined ? T('Workbook') : store.wb.sheets[n.sheet]?.name ?? '?'}</span>
             <span className="b-rowtools">
-              <button className="ico sm" aria-label={`Edit ${n.name}`} onClick={() => setEdit({ name: n })}><Pencil size={15} strokeWidth={1.9} /></button>
-              <button className="ico sm" aria-label={`Delete ${n.name}`} onClick={() => remove(n)}><Trash2 size={15} strokeWidth={1.9} /></button>
+              <button className="ico sm" aria-label={T('Edit {name}', { name: n.name })} onClick={() => setEdit({ name: n })}><Pencil size={15} strokeWidth={1.9} /></button>
+              <button className="ico sm" aria-label={T('Delete {name}', { name: n.name })} onClick={() => remove(n)}><Trash2 size={15} strokeWidth={1.9} /></button>
             </span>
           </div>
         ))}
-        {!rows.length && <div className="muted pad">{store.wb.names.length ? 'No names match.' : 'No names yet. A name gives a cell, range or formula a readable label.'}</div>}
+        {!rows.length && <div className="muted pad">{store.wb.names.length ? T('No names match.') : T('No names yet. A name gives a cell, range or formula a readable label.')}</div>}
       </div>
     </Dialog>
   );
@@ -307,7 +310,7 @@ export const EvaluateDialog = ({ store, close }: DialogProps) => {
     return m;
   }, [order, n, store, row, col]);
   if (!f || !tree) {
-    return <Dialog title="Evaluate formula" close={close} width={420}><p>{f ? "This formula can't be read." : `${addr(row, col)} doesn't hold a formula. Select a cell with a formula first.`}</p></Dialog>;
+    return <Dialog title={T('Evaluate formula')} close={close} width={420}><p>{f ? T('This formula can\'t be read.') : T('{p0} doesn\'t hold a formula. Select a cell with a formula first.', { p0: addr(row, col) })}</p></Dialog>;
   }
   const next = order[n] ?? null;
   const shown = nodeText(reduce(tree, done, next));
@@ -315,16 +318,16 @@ export const EvaluateDialog = ({ store, close }: DialogProps) => {
   const nextText = next ? nodeText(reduce(next, done, null)) : '';
   const finished = !next;
   return (
-    <Dialog title="Evaluate formula" close={close} wide footer={<>
-      <button onClick={() => setN(0)} disabled={n === 0}><RotateCcw size={15} strokeWidth={1.9} /> Restart</button>
-      <button onClick={() => setN(order.length)} disabled={finished}>Show result</button>
-      <button onClick={() => setN(n + 1)} disabled={finished}>Evaluate</button>
+    <Dialog title={T('Evaluate formula')} close={close} wide footer={<>
+      <button onClick={() => setN(0)} disabled={n === 0}><RotateCcw size={15} strokeWidth={1.9} />{' '}{T('Restart')}</button>
+      <button onClick={() => setN(order.length)} disabled={finished}>{T('Show result')}</button>
+      <button onClick={() => setN(n + 1)} disabled={finished}>{T('Evaluate')}</button>
     </>}>
       <div className="muted small">{store.sheet.name}!{addr(row, col)}</div>
       <div className="preview b-evalbox mono">=
         {pre}{next && <mark className="b-mark">{nextText}</mark>}{post}
       </div>
-      <p className="muted small">{finished ? `Result: ${resultText(store.value(row, col))}` : `Next, ${next!.type === 'ref' || next!.type === 'name' ? 'look up' : 'work out'} the highlighted part. Step ${n + 1} of ${order.length}.`}</p>
+      <p className="muted small">{finished ? T('Result: {p0}', { p0: resultText(store.value(row, col)) }) : T(next!.type === 'ref' || next!.type === 'name' ? 'Next, look up the highlighted part. Step {step} of {count}.' : 'Next, work out the highlighted part. Step {step} of {count}.', { step: n + 1, count: order.length })}</p>
       <div className="b-table b-steps" role="table">
         {order.slice(0, n).map((node, i) => (
           <div key={i} className="b-tr" role="row"><span className="mono b-ellip">{nodeText(node)}</span><span className="mono b-ellip">{resultText(done.get(node)!)}</span></div>
@@ -388,19 +391,19 @@ export const TraceDialog = ({ store, data, close }: DialogProps<{ dir?: 'precede
     return out;
   }, [dir, store, row, col, si]);
   return (
-    <Dialog title={dir === 'precedents' ? 'Cells this formula uses' : 'Formulas that use this cell'} close={close} width={520}>
+    <Dialog title={dir === 'precedents' ? T('Cells this formula uses') : T('Formulas that use this cell')} close={close} width={520}>
       <div className="b-seg" role="radiogroup">
-        <button role="radio" aria-checked={dir === 'precedents'} className={dir === 'precedents' ? 'on' : ''} onClick={() => setDir('precedents')}>Uses</button>
-        <button role="radio" aria-checked={dir === 'dependents'} className={dir === 'dependents' ? 'on' : ''} onClick={() => setDir('dependents')}>Used by</button>
+        <button role="radio" aria-checked={dir === 'precedents'} className={dir === 'precedents' ? 'on' : ''} onClick={() => setDir('precedents')}>{T('Uses')}</button>
+        <button role="radio" aria-checked={dir === 'dependents'} className={dir === 'dependents' ? 'on' : ''} onClick={() => setDir('dependents')}>{T('Used by')}</button>
       </div>
       <div className="muted small">{store.sheet.name}!{addr(row, col)}{store.cell(row, col)?.f ? ` = ${store.cell(row, col)!.f}` : ''}</div>
       <div className="b-table" role="table">
         {hits.map((h, i) => (
           <button key={i} className="b-tr b-link" onClick={() => { if (h.sheet !== store.sheetIndex) store.setActiveSheet(h.sheet); store.selectRange(h.range); }}>
-            <span className="mono">{h.label}</span><span className="b-ellip">{h.value}</span><span className="muted small">{h.via ? `via ${h.via}` : ''}</span>
+            <span className="mono">{h.label}</span><span className="b-ellip">{h.value}</span><span className="muted small">{h.via ? T('via {via}', { via: h.via }) : ''}</span>
           </button>
         ))}
-        {!hits.length && <div className="muted pad">{dir === 'precedents' ? (store.cell(row, col)?.f ? 'This formula refers to no cells.' : "This cell doesn't hold a formula.") : 'No formulas refer to this cell.'}</div>}
+        {!hits.length && <div className="muted pad">{dir === 'precedents' ? (store.cell(row, col)?.f ? T('This formula refers to no cells.') : T('This cell doesn\'t hold a formula.')) : T('No formulas refer to this cell.')}</div>}
       </div>
     </Dialog>
   );
@@ -409,49 +412,49 @@ export const TraceDialog = ({ store, data, close }: DialogProps<{ dir?: 'precede
 // ---------- Error checking ----------
 
 export const ERROR_HELP: Partial<Record<ErrorCode, string>> = {
-  '#DIV/0!': 'A number is divided by zero or by an empty cell.',
-  '#N/A': "A lookup didn't find a match, or a value isn't available.",
-  '#NAME?': "The formula uses a name or function that doesn't exist. Check the spelling.",
-  '#NULL!': "Two ranges that don't overlap are joined with a space.",
-  '#NUM!': 'A number is out of range, or a calculation could not find an answer.',
-  '#REF!': 'The formula refers to cells that were deleted or are off the sheet.',
-  '#VALUE!': 'A value has the wrong type, like text where a number is needed.',
-  '#SPILL!': "The result needs more cells, but some aren't empty. Clear them.",
-  '#CALC!': 'The calculation gave an empty result, such as a filter with no matches.',
-  '#FIELD!': "The field doesn't exist in the data.",
-  '#BLOCKED!': 'This feature is not available here.',
-  '#CONNECT!': "Couldn't reach a data source.",
-  '#BUSY!': 'Still working on the result.',
-  '#GETTING_DATA': 'Waiting for data.',
-  '#UNKNOWN!': "This data type isn't supported.",
+  '#DIV/0!': N('A number is divided by zero or by an empty cell.'),
+  '#N/A': N("A lookup didn't find a match, or a value isn't available."),
+  '#NAME?': N("The formula uses a name or function that doesn't exist. Check the spelling."),
+  '#NULL!': N("Two ranges that don't overlap are joined with a space."),
+  '#NUM!': N('A number is out of range, or a calculation could not find an answer.'),
+  '#REF!': N('The formula refers to cells that were deleted or are off the sheet.'),
+  '#VALUE!': N('A value has the wrong type, like text where a number is needed.'),
+  '#SPILL!': N("The result needs more cells, but some aren't empty. Clear them."),
+  '#CALC!': N('The calculation gave an empty result, such as a filter with no matches.'),
+  '#FIELD!': N("The field doesn't exist in the data."),
+  '#BLOCKED!': N('This feature is not available here.'),
+  '#CONNECT!': N("Couldn't reach a data source."),
+  '#BUSY!': N('Still working on the result.'),
+  '#GETTING_DATA': N('Waiting for data.'),
+  '#UNKNOWN!': N("This data type isn't supported."),
 };
 
 export const ErrorsDialog = ({ store, close }: DialogProps) => {
   const list = useMemo(() => {
     const out: { sheet: number; row: number; col: number; code: string; f?: string; help: string }[] = [];
     const circ = new Set(store.engine.circular.map((c) => `${c.sheet}:${c.row}:${c.col}`));
-    for (const c of store.engine.circular) out.push({ sheet: c.sheet, row: c.row, col: c.col, code: 'Circular', f: store.cell(c.row, c.col, c.sheet)?.f, help: 'The formula refers to its own cell, directly or through other cells.' });
+    for (const c of store.engine.circular) out.push({ sheet: c.sheet, row: c.row, col: c.col, code: 'Circular', f: store.cell(c.row, c.col, c.sheet)?.f, help: N('The formula refers to its own cell, directly or through other cells.') });
     store.wb.sheets.forEach((s, si) => {
       for (const [k, c] of s.cells) {
         if (out.length > 5000) return;
         const row = keyRow(k), col = keyCol(k);
         if (circ.has(`${si}:${row}:${col}`)) continue;
         const v = store.value(row, col, si);
-        if (isError(v)) out.push({ sheet: si, row, col, code: v.code, f: c.f, help: (v.detail ? `${v.detail}. ` : '') + (ERROR_HELP[v.code] ?? 'The formula returned an error.') });
+        if (isError(v)) out.push({ sheet: si, row, col, code: v.code, f: c.f, help: (v.detail ? `${v.detail}. ` : '') + Tr(ERROR_HELP[v.code] ?? N('The formula returned an error.')) });
       }
     });
     return out;
   }, [store]);
   return (
-    <Dialog title="Error checking" close={close} wide>
-      <div className="muted small">{list.length ? `${list.length.toLocaleString()} ${list.length === 1 ? 'problem' : 'problems'} in this workbook` : 'No errors found in this workbook.'}</div>
+    <Dialog title={T('Error checking')} close={close} wide>
+      <div className="muted small">{list.length ? T('{count, plural, one {# problem} other {# problems}} in this workbook', { count: list.length }) : T('No errors found in this workbook.')}</div>
       <div className="b-table" role="table">
         {list.slice(0, 2000).map((e, i) => (
           <button key={i} className="b-tr b-link b-errrow" onClick={() => goTo(store, e.sheet, e.row, e.col)}>
             <span className="mono">{quoteSheet(store.wb.sheets[e.sheet]!.name)}!{addr(e.row, e.col)}</span>
             <span className="b-errcode">{e.code}</span>
             <span className="b-ellip mono">{e.f ? `=${e.f}` : ''}</span>
-            <span className="b-errhelp">{e.help}</span>
+            <span className="b-errhelp">{Tr(e.help)}</span>
           </button>
         ))}
       </div>

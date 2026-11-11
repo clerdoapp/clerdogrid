@@ -17,6 +17,7 @@ import { CommentsPane, PopoverLayer } from './CommentLayer';
 import { AccessibilityDialog, AltTextDialog, EditRangesDialog, PerformanceDialog, SpellingDialog, StatsDialog } from './dialogs';
 import { checkSection, checkboxSection, commentsSection, drawInkSection, drawStyleSection, drawToolsSection, notesSection, shapesSection } from './panels';
 import './objects.css';
+import { N, T } from '../../ui/i18n';
 
 const at = (s: GridStore) => s.sel.active;
 const pinAt = (s: GridStore, row: number, col: number, compose = false) => setUi(s, { pinned: { sheet: s.sheetIndex, row, col, compose }, hover: null });
@@ -38,38 +39,38 @@ const insertShape = (s: GridStore, kind: ShapeKind) => {
 
 export const register = (): void => {
   // ---------- Comments ----------
-  registerCommand({ id: 'comment.new', label: 'New comment', group: 'Review', keys: 'Mod+Alt+M', run: (s) => { const { row, col } = at(s); pinAt(s, row, col, !threadAt(s, row, col)); } });
-  registerCommand({ id: 'comment.pane', label: 'Show comments', group: 'Review', active: () => ui.commentsPane, run: (s) => setUi(s, { commentsPane: !ui.commentsPane }) });
-  registerCommand({ id: 'comment.next', label: 'Next comment', group: 'Review', enabled: (s) => !!s.sheet.comments?.size, run: (s) => { const p = stepTo(s, s.sheet.comments?.keys() ?? [], 1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
-  registerCommand({ id: 'comment.prev', label: 'Previous comment', group: 'Review', enabled: (s) => !!s.sheet.comments?.size, run: (s) => { const p = stepTo(s, s.sheet.comments?.keys() ?? [], -1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
-  registerCommand({ id: 'comment.resolve', label: 'Resolve or reopen', group: 'Review', enabled: (s) => !!threadAt(s, at(s).row, at(s).col), run: (s) => { const { row, col } = at(s); resolveComment(s, row, col, !threadAt(s, row, col)!.resolved); } });
-  registerCommand({ id: 'comment.delete', label: 'Delete comment', group: 'Review', enabled: (s) => !!threadAt(s, at(s).row, at(s).col), run: (s) => { const { row, col } = at(s); deleteComment(s, row, col); setUi(s, { pinned: null }); } });
+  registerCommand({ id: 'comment.new', label: N('New comment'), group: N('Review'), keys: 'Mod+Alt+M', run: (s) => { const { row, col } = at(s); pinAt(s, row, col, !threadAt(s, row, col)); } });
+  registerCommand({ id: 'comment.pane', label: N('Show comments'), group: N('Review'), active: () => ui.commentsPane, run: (s) => setUi(s, { commentsPane: !ui.commentsPane }) });
+  registerCommand({ id: 'comment.next', label: N('Next comment'), group: N('Review'), enabled: (s) => !!s.sheet.comments?.size, run: (s) => { const p = stepTo(s, s.sheet.comments?.keys() ?? [], 1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
+  registerCommand({ id: 'comment.prev', label: N('Previous comment'), group: N('Review'), enabled: (s) => !!s.sheet.comments?.size, run: (s) => { const p = stepTo(s, s.sheet.comments?.keys() ?? [], -1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
+  registerCommand({ id: 'comment.resolve', label: N('Resolve or reopen'), group: N('Review'), enabled: (s) => !!threadAt(s, at(s).row, at(s).col), run: (s) => { const { row, col } = at(s); resolveComment(s, row, col, !threadAt(s, row, col)!.resolved); } });
+  registerCommand({ id: 'comment.delete', label: N('Delete comment'), group: N('Review'), enabled: (s) => !!threadAt(s, at(s).row, at(s).col), run: (s) => { const { row, col } = at(s); deleteComment(s, row, col); setUi(s, { pinned: null }); } });
 
   // ---------- Notes ----------
-  registerCommand({ id: 'note.delete', label: 'Delete note', group: 'Review', enabled: (s) => s.sheet.notes.size > 0, run: (s) => deleteNote(s) });
-  registerCommand({ id: 'note.showAll', label: 'Show all notes', group: 'Review', active: () => ui.showAllNotes, run: (s) => setUi(s, { showAllNotes: !ui.showAllNotes }) });
-  registerCommand({ id: 'note.next', label: 'Next note', group: 'Review', enabled: (s) => s.sheet.notes.size > 0, run: (s) => { const p = stepTo(s, s.sheet.notes.keys(), 1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
-  registerCommand({ id: 'note.prev', label: 'Previous note', group: 'Review', enabled: (s) => s.sheet.notes.size > 0, run: (s) => { const p = stepTo(s, s.sheet.notes.keys(), -1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
+  registerCommand({ id: 'note.delete', label: N('Delete note'), group: N('Review'), enabled: (s) => s.sheet.notes.size > 0, run: (s) => deleteNote(s) });
+  registerCommand({ id: 'note.showAll', label: N('Show all notes'), group: N('Review'), active: () => ui.showAllNotes, run: (s) => setUi(s, { showAllNotes: !ui.showAllNotes }) });
+  registerCommand({ id: 'note.next', label: N('Next note'), group: N('Review'), enabled: (s) => s.sheet.notes.size > 0, run: (s) => { const p = stepTo(s, s.sheet.notes.keys(), 1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
+  registerCommand({ id: 'note.prev', label: N('Previous note'), group: N('Review'), enabled: (s) => s.sheet.notes.size > 0, run: (s) => { const p = stepTo(s, s.sheet.notes.keys(), -1); if (p) { s.select(p); pinAt(s, p.row, p.col); } } });
 
   // ---------- Checkboxes, shapes, ink ----------
-  registerCommand({ id: 'insert.checkbox', label: 'Checkbox', group: 'Insert', run: insertCheckboxes });
-  registerCommand({ id: 'insert.removeCheckbox', label: 'Remove checkboxes', group: 'Insert', run: removeCheckboxes });
-  registerCommand({ id: 'insert.shape', label: 'Shape', group: 'Insert', run: (s, kind) => insertShape(s, (typeof kind === 'string' ? kind : 'rect') as ShapeKind) });
-  registerCommand({ id: 'insert.textBox', label: 'Text box', group: 'Insert', run: (s) => insertShape(s, 'textBox') });
-  registerCommand({ id: 'draw.clear', label: 'Clear ink on this sheet', group: 'Draw', enabled: (s) => !!s.sheet.ink?.length, run: clearInk });
-  registerCommand({ id: 'draw.select', label: 'Select tool', group: 'Draw', run: (s) => setUi(s, { tool: 'select' }) });
-  registerCommand({ id: 'draw.pen', label: 'Pen', group: 'Draw', run: (s) => setUi(s, { tool: 'pen' }) });
-  registerCommand({ id: 'draw.highlighter', label: 'Highlighter', group: 'Draw', run: (s) => setUi(s, { tool: 'highlighter' }) });
-  registerCommand({ id: 'draw.eraser', label: 'Eraser', group: 'Draw', run: (s) => setUi(s, { tool: 'eraser' }) });
+  registerCommand({ id: 'insert.checkbox', label: N('Checkbox'), group: N('Insert'), run: insertCheckboxes });
+  registerCommand({ id: 'insert.removeCheckbox', label: N('Remove checkboxes'), group: N('Insert'), run: removeCheckboxes });
+  registerCommand({ id: 'insert.shape', label: N('Shape'), group: N('Insert'), run: (s, kind) => insertShape(s, (typeof kind === 'string' ? kind : 'rect') as ShapeKind) });
+  registerCommand({ id: 'insert.textBox', label: N('Text box'), group: N('Insert'), run: (s) => insertShape(s, 'textBox') });
+  registerCommand({ id: 'draw.clear', label: N('Clear ink on this sheet'), group: N('Draw'), enabled: (s) => !!s.sheet.ink?.length, run: clearInk });
+  registerCommand({ id: 'draw.select', label: N('Select tool'), group: N('Draw'), run: (s) => setUi(s, { tool: 'select' }) });
+  registerCommand({ id: 'draw.pen', label: N('Pen'), group: N('Draw'), run: (s) => setUi(s, { tool: 'pen' }) });
+  registerCommand({ id: 'draw.highlighter', label: N('Highlighter'), group: N('Draw'), run: (s) => setUi(s, { tool: 'highlighter' }) });
+  registerCommand({ id: 'draw.eraser', label: N('Eraser'), group: N('Draw'), run: (s) => setUi(s, { tool: 'eraser' }) });
 
   // ---------- Review tools ----------
-  registerCommand({ id: 'review.spelling', label: 'Spelling', group: 'Review', keys: 'F7', run: (s) => openDialog(s, 'spelling') });
-  registerCommand({ id: 'review.stats', label: 'Workbook statistics', group: 'Review', run: (s) => openDialog(s, 'workbookStats') });
-  registerCommand({ id: 'review.accessibility', label: 'Check accessibility', group: 'Review', run: (s) => openDialog(s, 'accessibility') });
-  registerCommand({ id: 'review.performance', label: 'Check performance', group: 'Review', run: (s) => openDialog(s, 'performance') });
-  registerCommand({ id: 'review.editRanges', label: 'Allow edit ranges', group: 'Review', run: (s) => openDialog(s, 'editRanges') });
+  registerCommand({ id: 'review.spelling', label: N('Spelling'), group: N('Review'), keys: 'F7', run: (s) => openDialog(s, 'spelling') });
+  registerCommand({ id: 'review.stats', label: N('Workbook statistics'), group: N('Review'), run: (s) => openDialog(s, 'workbookStats') });
+  registerCommand({ id: 'review.accessibility', label: N('Check accessibility'), group: N('Review'), run: (s) => openDialog(s, 'accessibility') });
+  registerCommand({ id: 'review.performance', label: N('Check performance'), group: N('Review'), run: (s) => openDialog(s, 'performance') });
+  registerCommand({ id: 'review.editRanges', label: N('Allow edit ranges'), group: N('Review'), run: (s) => openDialog(s, 'editRanges') });
   registerCommand({
-    id: 'review.altText', label: 'Alt text', group: 'Review',
+    id: 'review.altText', label: N('Alt text'), group: N('Review'),
     enabled: (s) => !!ui.shape || !!selectedChart() || s.sheet.pictures.length > 0,
     run: (s) => {
       if (ui.shape) openDialog(s, 'altText', { type: 'shape', id: ui.shape });
@@ -86,15 +87,15 @@ export const register = (): void => {
   registerDialog('altText', AltTextDialog);
 
   // ---------- Panels ----------
-  registerPanelSection({ tab: 'insert', title: 'Shapes', order: 10, render: shapesSection });
-  registerPanelSection({ tab: 'insert', title: 'Checkboxes', order: 11, render: checkboxSection });
-  registerPanelSection({ tab: 'insert', title: 'Comments', order: 12, render: (s) => commentsSection(s) });
-  registerPanelSection({ tab: 'review', title: 'Comments', order: 1, render: commentsSection });
-  registerPanelSection({ tab: 'review', title: 'Note tools', order: 2, render: notesSection });
-  registerPanelSection({ tab: 'review', title: 'Review tools', order: 3, render: checkSection });
-  registerPanelSection({ tab: 'draw', title: 'Tools', order: 1, render: drawToolsSection });
-  registerPanelSection({ tab: 'draw', title: 'Style', order: 2, render: drawStyleSection });
-  registerPanelSection({ tab: 'draw', title: 'Ink', order: 3, render: drawInkSection });
+  registerPanelSection({ tab: 'insert', title: N('Shapes'), order: 10, render: shapesSection });
+  registerPanelSection({ tab: 'insert', title: N('Checkboxes'), order: 11, render: checkboxSection });
+  registerPanelSection({ tab: 'insert', title: N('Comments'), order: 12, render: (s) => commentsSection(s) });
+  registerPanelSection({ tab: 'review', title: N('Comments'), order: 1, render: commentsSection });
+  registerPanelSection({ tab: 'review', title: N('Note tools'), order: 2, render: notesSection });
+  registerPanelSection({ tab: 'review', title: N('Review tools'), order: 3, render: checkSection });
+  registerPanelSection({ tab: 'draw', title: N('Tools'), order: 1, render: drawToolsSection });
+  registerPanelSection({ tab: 'draw', title: N('Style'), order: 2, render: drawStyleSection });
+  registerPanelSection({ tab: 'draw', title: N('Ink'), order: 3, render: drawInkSection });
 
   // ---------- Overlays (order: shapes under ink under popovers) ----------
   registerOverlay({ id: 'objects.shapes', order: 10, render: (s, vp) => createElement(ShapeLayer, { store: s, vp }) });
@@ -115,7 +116,7 @@ export const register = (): void => {
         const size = Math.max(16, Math.min(14 * vp.zoom, b.height - 4) + 8);
         if (Math.abs(h.x - (b.left + b.width / 2)) <= size / 2 + 2 && Math.abs(h.y - (b.top + b.height / 2)) <= size / 2 + 2) {
           s.select({ row: h.row, col: h.col });
-          if (!toggleCheckboxes(s, [{ row: h.row, col: h.col }]) && s.isLocked(h.row, h.col)) s.notify('This cell is protected.');
+          if (!toggleCheckboxes(s, [{ row: h.row, col: h.col }]) && s.isLocked(h.row, h.col)) s.notify(T('This cell is protected.'));
           return true;
         }
       }

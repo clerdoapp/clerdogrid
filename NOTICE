@@ -10,3 +10,6 @@ Bundled third-party material:
 - Fonts (Carlito, Caladea, Arimo, Tinos, Cousine, Hanken Grotesk, Inter, Lato, Montserrat, Open Sans,
   Roboto, Roboto Mono, Noto Naskh Arabic): SIL Open Font License 1.1 or Apache License 2.0, through
   the @fontsource packages.
+- Fonts Noto Sans SC, Noto Sans JP, Noto Sans KR and Noto Emoji (monochrome): SIL Open Font License 1.1,
+  through the @fontsource packages. Subsets of these and the fonts above are embedded in exported PDFs,
+  which the licence allows.

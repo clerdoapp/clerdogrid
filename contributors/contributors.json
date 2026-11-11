@@ -1,0 +1,20 @@
+{
+  "about": "People and tools that contributed to ClerdoGrid. Maintainers refresh this with: npm run contributors",
+  "updated": "2026-11-08",
+  "contributors": [
+    {
+      "name": "Clerdo",
+      "role": "Maintainer",
+      "url": "https://clerdo.app",
+      "pinned": true,
+      "commits": 2
+    },
+    {
+      "name": "Claude (AI assistant)",
+      "role": "Code and documentation assistance",
+      "url": "https://www.anthropic.com/claude",
+      "pinned": true,
+      "commits": 1
+    }
+  ]
+}

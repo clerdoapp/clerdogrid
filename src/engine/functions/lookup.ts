@@ -2,7 +2,7 @@ import {
   CellError, Err, MAX_COLS, MAX_ROWS, isError, isLambda, isMatrix, isRef, isRefs, isScalar, ref,
   type FnContext, type FunctionDef, type LambdaValue, type Matrix, type RangeRef, type Scalar, type Value,
 } from '../types';
-import { approxEqual, cellsOf, collectNumbers, compareValues, first, int, matrix, num, optBool, optNum, refArea, text, toMatrix } from '../coerce';
+import { approxEqual, cellsOf, compareValues, first, int, matrix, num, optBool, optNum, refArea, text, toMatrix } from '../coerce';
 import { textCompare, textMatcher } from './criteria';
 
 type R<T> = T | CellError;
@@ -26,6 +26,7 @@ export const arr = (v: Value, ctx: FnContext): R<Matrix> => {
 const shape = (v: Value, ctx: FnContext): R<[number, number]> => {
   if (isRef(v)) return refArea(v);
   if (isRefs(v)) return Err.ref;
+  if (isError(v)) return v;
   const m = toMatrix(v, ctx);
   return isError(m) ? m : [m.length, m[0]?.length ?? 0];
 };
@@ -195,8 +196,6 @@ const rowOrCol = (isRow: boolean): FunctionDef => ({
 
 const ROWS: FunctionDef = { name: 'ROWS', min: 1, max: 1, fn: ([v], ctx) => { const s = shape(v!, ctx); return isError(s) ? s : s[0]; } };
 const COLUMNS: FunctionDef = { name: 'COLUMNS', min: 1, max: 1, fn: ([v], ctx) => { const s = shape(v!, ctx); return isError(s) ? s : s[1]; } };
-
-const GETPIVOTDATA: FunctionDef = { name: 'GETPIVOTDATA', min: 2, max: 254, fn: () => Err.ref };
 
 const HYPERLINK: FunctionDef = {
   name: 'HYPERLINK', min: 1, max: 2, scalar: true,
@@ -447,6 +446,11 @@ const FILTER: FunctionDef = {
 const stack = (vertical: boolean): FunctionDef => ({
   name: vertical ? 'VSTACK' : 'HSTACK', min: 1, max: 255,
   fn: (a, ctx) => {
+    // HSTACK(SUM, AVERAGE): a list of functions for GROUPBY and PIVOTBY.
+    if (a.length && a.every((v) => isLambda(v))) {
+      const list = (a as LambdaValue[]).flatMap((l) => l.list ?? [l]);
+      return { kind: 'lambda', params: ['x'], invoke: () => Err.calc, list, vertical } satisfies LambdaValue;
+    }
     const parts: Matrix[] = [];
     for (const v of a) {
       const m = arr(v, ctx);
@@ -698,212 +702,10 @@ const MAKEARRAY: FunctionDef = {
   },
 };
 
-// ---------------------------------------------------------------- PERCENTOF / GROUPBY / PIVOTBY
-
-const PERCENTOF: FunctionDef = {
-  name: 'PERCENTOF', min: 2, max: 2,
-  fn: (a, ctx) => {
-    const s = collectNumbers([a[0]!], ctx), t = collectNumbers([a[1]!], ctx);
-    if (isError(s)) return s; if (isError(t)) return t;
-    const tot = t.reduce((x, y) => x + y, 0);
-    return tot === 0 ? Err.div0 : s.reduce((x, y) => x + y, 0) / tot;
-  },
-};
-
-interface GNode { key: Scalar[]; rows: number[]; kids: GNode[] }
-interface Line { keys: Scalar[]; rows: number[]; kind: 'leaf' | 'sub' | 'total' }
-interface SortSpec { idx: number; desc: boolean }
-
-const tupleCmp = (x: Scalar[], y: Scalar[], desc = false): number => {
-  for (let i = 0; i < x.length; i++) { const c = sortCmp(x[i]!, y[i]!, desc); if (c) return c; }
-  return 0;
-};
-
-/**
- * Groups `rows` level by level. In hierarchy mode each level groups one field column; in table mode
- * one level groups the whole tuple. `cmp` orders siblings at a level.
- */
-const buildTree = (keys: Matrix, rows: number[], level: number, nf: number, table: boolean,
-  cmp: (level: number, x: GNode, y: GNode) => number): GNode[] => {
-  const map = new Map<string, GNode>();
-  for (const r of rows) {
-    const key = table ? keys[r]! : [keys[r]![level]!];
-    const k = key.map(keyOf).join('\u0000');
-    let n = map.get(k);
-    if (!n) map.set(k, (n = { key, rows: [], kids: [] }));
-    n.rows.push(r);
-  }
-  const nodes = [...map.values()];
-  if (!table && level + 1 < nf) for (const n of nodes) n.kids = buildTree(keys, n.rows, level + 1, nf, table, cmp);
-  return nodes.sort((x, y) => cmp(level, x, y));
-};
-
-/** Flattens a group tree into output lines with subtotals (|depth| >= 2) and a grand total. */
-const flatten = (tree: GNode[], all: number[], nf: number, depth: number): Line[] => {
-  const top = depth < 0, d = Math.abs(depth);
-  const out: Line[] = [];
-  const walk = (nodes: GNode[], prefix: Scalar[], level: number): void => {
-    for (const n of nodes) {
-      const keys = [...prefix, ...n.key];
-      if (!n.kids.length) { out.push({ keys, rows: n.rows, kind: 'leaf' }); continue; }
-      const sub: Line = { keys: [...keys, ...Array<Scalar>(nf - keys.length).fill(null)], rows: n.rows, kind: 'sub' };
-      const withSub = level < d - 1;
-      if (withSub && top) out.push(sub);
-      walk(n.kids, keys, level + 1);
-      if (withSub && !top) out.push(sub);
-    }
-  };
-  walk(tree, [], 0);
-  if (d >= 1) {
-    const tot: Line = { keys: ['Total', ...Array<Scalar>(nf - 1).fill(null)], rows: all, kind: 'total' };
-    if (top) out.unshift(tot); else out.push(tot);
-  }
-  return out;
-};
-
-interface Fields { names: Scalar[]; data: Matrix }
-
-/** Splits headers off (field_headers 1/3, or auto-detected) and reports whether to show them. */
-const headerMode = (fh: number | null, vals: Matrix, multi: boolean): R<{ has: boolean; show: boolean; gen: boolean }> => {
-  if (fh === null) {
-    const has = typeof vals[0]?.[0] === 'string' && typeof vals[1]?.[0] === 'number';
-    return { has, show: has && multi, gen: false };
-  }
-  if (![0, 1, 2, 3].includes(fh)) return Err.value;
-  return { has: fh === 1 || fh === 3, show: fh >= 2, gen: fh === 2 };
-};
-
-const split = (m: Matrix, has: boolean, prefix: string): Fields => ({
-  names: has ? m[0]! : m[0]!.map((_, j) => `${prefix} ${j + 1}`),
-  data: has ? m.slice(1) : m,
-});
-
-const parseSort = (v: Value | undefined, ctx: FnContext, width: number): R<SortSpec[]> => {
-  if (v === undefined || v === null) return [];
-  const ns = nums(v, ctx);
-  if (isError(ns)) return ns;
-  if (ns.some((n) => n === 0 || Math.abs(n) > width)) return Err.value;
-  return ns.map((n) => ({ idx: Math.abs(n) - 1, desc: n < 0 }));
-};
-
-const aggregator = (f: LambdaValue, ctx: FnContext, vals: Matrix) => (rows: number[], col: number, allRows: number[]): Scalar => {
-  if (!rows.length) return null;
-  const pick = (rs: number[]): Matrix => rs.map((r) => [vals[r]![col]!]);
-  return one(ctx.call(f, f.params.length === 2 ? [pick(rows), pick(allRows)] : [pick(rows)]), ctx);
-};
-
-const sorter = (specs: SortSpec[], nf: number, table: boolean, agg: (rows: number[], col: number) => Scalar) =>
-  (level: number, x: GNode, y: GNode): number => {
-    for (const s of specs) {
-      let c = 0;
-      if (s.idx >= nf) c = sortCmp(agg(x.rows, s.idx - nf), agg(y.rows, s.idx - nf), s.desc);
-      else if (table) c = sortCmp(x.key[s.idx]!, y.key[s.idx]!, s.desc);
-      else if (s.idx === level) c = sortCmp(x.key[0]!, y.key[0]!, s.desc);
-      else continue;
-      if (c) return c;
-    }
-    return tupleCmp(x.key, y.key);
-  };
-
-const filterRows = (v: Value | undefined, ctx: FnContext, n: number, has: boolean): R<number[]> => {
-  const idx = Array.from({ length: n }, (_, i) => i);
-  if (v === undefined || v === null) return idx;
-  const m = arr(v, ctx);
-  if (isError(m)) return m;
-  let cells = flat(m);
-  if (m.length !== 1 && m[0]!.length !== 1) return Err.value;
-  if (has && cells.length === n + 1) cells = cells.slice(1);
-  if (cells.length !== n) return Err.value;
-  const out: number[] = [];
-  for (let i = 0; i < n; i++) {
-    const c = cells[i]!;
-    if (isError(c)) return c;
-    if (c === true || (typeof c === 'number' && c !== 0)) out.push(i);
-  }
-  return out;
-};
-
-const optInt = (v: Value | undefined, ctx: FnContext): R<number | null> => (v === undefined || v === null ? null : int(v, ctx));
-
-const GROUPBY: FunctionDef = {
-  name: 'GROUPBY', min: 3, max: 8,
-  fn: (a, ctx) => {
-    const rf0 = arr(a[0]!, ctx), v0 = arr(a[1]!, ctx);
-    if (isError(rf0)) return rf0; if (isError(v0)) return v0;
-    if (rf0.length !== v0.length) return Err.value;
-    const f = lam(a[2], a[2] !== undefined && isLambda(a[2]) && a[2].params.length === 2 ? 2 : 1);
-    if (isError(f)) return f;
-    const fh = optInt(a[3], ctx), td = optInt(a[4], ctx), rel = optInt(a[7], ctx);
-    if (isError(fh)) return fh; if (isError(td)) return td; if (isError(rel)) return rel;
-    const nf = rf0[0]!.length, nv = v0[0]!.length;
-    const hm = headerMode(fh, v0, nf > 1 || nv > 1);
-    if (isError(hm)) return hm;
-    const rf = split(rf0, hm.has, 'Row Field'), vals = split(v0, hm.has, 'Value');
-    const table = rel === 1;
-    if (rel !== null && rel !== 0 && rel !== 1) return Err.value;
-    const depth = td ?? (nf > 1 && !table ? 2 : 1);
-    if (table && Math.abs(depth) > 1) return Err.value;
-    const specs = parseSort(a[5], ctx, nf + nv);
-    if (isError(specs)) return specs;
-    const rows = filterRows(a[6], ctx, rf.data.length, hm.has);
-    if (isError(rows)) return rows;
-    if (!rows.length) return Err.calc;
-    const agg = aggregator(f, ctx, vals.data);
-    const tree = buildTree(rf.data, rows, 0, nf, table, sorter(specs, nf, table, (rs, c) => agg(rs, c, rows)));
-    const lines = flatten(tree, rows, nf, depth);
-    const out: Matrix = lines.map((l) => [...l.keys, ...vals.names.map((_, c) => agg(l.rows, c, rows))]);
-    if (hm.show) out.unshift([...rf.names, ...vals.names]);
-    return out;
-  },
-};
-
-const PIVOTBY: FunctionDef = {
-  name: 'PIVOTBY', min: 4, max: 11,
-  fn: (a, ctx) => {
-    const rf0 = arr(a[0]!, ctx), cf0 = arr(a[1]!, ctx), v0 = arr(a[2]!, ctx);
-    if (isError(rf0)) return rf0; if (isError(cf0)) return cf0; if (isError(v0)) return v0;
-    if (rf0.length !== v0.length || cf0.length !== v0.length) return Err.value;
-    const f = lam(a[3], a[3] !== undefined && isLambda(a[3]) && a[3].params.length === 2 ? 2 : 1);
-    if (isError(f)) return f;
-    const ints = [a[4], a[5], a[7], a[10]].map((v) => optInt(v, ctx));
-    for (const x of ints) if (isError(x)) return x;
-    const [fh, rtd, ctd, relTo] = ints as (number | null)[];
-    const nr = rf0[0]!.length, nc = cf0[0]!.length, nv = v0[0]!.length;
-    const hm = headerMode(fh, v0, true);
-    if (isError(hm)) return hm;
-    const rf = split(rf0, hm.has, 'Row Field'), cf = split(cf0, hm.has, 'Col Field'), vals = split(v0, hm.has, 'Value');
-    const rows = filterRows(a[9], ctx, rf.data.length, hm.has);
-    if (isError(rows)) return rows;
-    if (!rows.length) return Err.calc;
-    const rspecs = parseSort(a[6], ctx, nr + nv), cspecs = parseSort(a[8], ctx, nc + nv);
-    if (isError(rspecs)) return rspecs; if (isError(cspecs)) return cspecs;
-    const agg = aggregator(f, ctx, vals.data);
-    const rLines = flatten(buildTree(rf.data, rows, 0, nr, false, sorter(rspecs, nr, false, (rs, c) => agg(rs, c, rows))), rows, nr, rtd ?? (nr > 1 ? 2 : 1));
-    const cLines = flatten(buildTree(cf.data, rows, 0, nc, false, sorter(cspecs, nc, false, (rs, c) => agg(rs, c, rows))), rows, nc, ctd ?? (nc > 1 ? 2 : 1));
-    const cSets = cLines.map((l) => new Set(l.rows));
-    const grand = rows;
-    const out: Matrix = [];
-    for (let l = 0; l < nc; l++) out.push([...Array<Scalar>(nr).fill(null), ...cLines.flatMap((c) => Array<Scalar>(nv).fill(c.keys[l]!))]);
-    if (nv > 1) out.push([...Array<Scalar>(nr).fill(null), ...cLines.flatMap(() => vals.names)]);
-    if (hm.show) out[out.length - 1]!.splice(0, nr, ...rf.names);
-    for (const rl of rLines) {
-      const row: Scalar[] = [...rl.keys];
-      cLines.forEach((_, ci) => {
-        const rs = rl.rows.filter((r) => cSets[ci]!.has(r));
-        // relative_to: 0 column total, 1 row total, 2 grand total (3/4 use the column/row total).
-        const base = relTo === 1 || relTo === 4 ? rl.rows : relTo === 2 ? grand : cLines[ci]!.rows;
-        for (let v = 0; v < nv; v++) row.push(agg(rs, v, base));
-      });
-      out.push(row);
-    }
-    return out;
-  },
-};
-
 export const defs: FunctionDef[] = [
-  ADDRESS, AREAS, pick(true), pick(false), rowOrCol(false), COLUMNS, takeDrop(false), EXPAND, FILTER, GETPIVOTDATA,
+  ADDRESS, AREAS, pick(true), pick(false), rowOrCol(false), COLUMNS, takeDrop(false), EXPAND, FILTER,
   vhlookup(false), stack(false), HYPERLINK, INDEX, LOOKUP, MATCH, OFFSET, rowOrCol(true), ROWS, SORT, SORTBY,
   takeDrop(true), toVec(true), toVec(false), TRANSPOSE, UNIQUE, vhlookup(true), stack(true), wrap(false), wrap(true),
   XLOOKUP, XMATCH, SEQUENCE, RANDARRAY, TRIMRANGE, byRowCol(true), byRowCol(false), MAP, reduceScan(false),
-  reduceScan(true), MAKEARRAY, GROUPBY, PIVOTBY, PERCENTOF,
+  reduceScan(true), MAKEARRAY,
 ];

@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { defs } from '../src/engine/functions/lookup';
+import { defs as lookupDefs } from '../src/engine/functions/lookup';
+import { defs as pivotDefs } from '../src/engine/functions/pivot';
+
+const defs = [...lookupDefs, ...pivotDefs];
 import { Err, MAX_ROWS, ref, type FnContext, type Scalar, type Value } from '../src/engine/types';
 import { lambda, makeCtx } from './fnctx';
 
@@ -237,7 +240,7 @@ describe('GROUPBY / PIVOTBY / PERCENTOF / misc', () => {
     const rf = [['Region', 'Item'], ['East', 'a'], ['East', 'b'], ['West', 'a']];
     const v = [['Sales'], [1], [2], [4]];
     expect(call('GROUPBY', [rf, v, SUM, 3])).toEqual([
-      ['Region', 'Item', 'Sales'], ['East', 'a', 1], ['East', 'b', 2], ['East', null, 3], ['West', 'a', 4], ['West', null, 4], ['Total', null, 7],
+      ['Region', 'Item', 'Sales'], ['East', 'a', 1], ['East', 'b', 2], ['East', '', 3], ['West', 'a', 4], ['West', '', 4], ['Total', '', 7],
     ]);
   });
   it('PERCENTOF as a two-argument aggregator', () => {
@@ -249,7 +252,7 @@ describe('GROUPBY / PIVOTBY / PERCENTOF / misc', () => {
   it('PIVOTBY', () => {
     const rows = [['A'], ['A'], ['B']], cols = [['x'], ['y'], ['x']], v = [[1], [2], [3]];
     expect(call('PIVOTBY', [rows, cols, v, SUM, 0])).toEqual([
-      [null, 'x', 'y', 'Total'], ['A', 1, 2, 3], ['B', 3, null, 3], ['Total', 4, 2, 6],
+      ['', 'x', 'y', 'Total'], ['A', 1, 2, 3], ['B', 3, '', 3], ['Total', 4, 2, 6],
     ]);
   });
   it('HYPERLINK and GETPIVOTDATA', () => {
