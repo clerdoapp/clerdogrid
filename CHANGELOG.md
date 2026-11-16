@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Cloud build for grid.clerdo.app:** sign in with a Clerdo account, save workbooks to the cloud with autosave, open them anywhere, version history with restore, share links, and a choice of version when a workbook was changed somewhere else. Workbooks saved by the first Grid web app open here. The desktop and offline web apps are unchanged. Build with `npm run build:cloud`; backend in `server/`.
+
 ## 0.6.0 — 2026-11-11
 
 - **Page layout and printing:** page setup, headers and footers, print area and titles, page breaks, page break preview, page layout view, print preview and ClerdoGrid's own PDF writer with embedded fonts.

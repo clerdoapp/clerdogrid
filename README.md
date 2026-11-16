@@ -66,6 +66,7 @@ Get the latest build from the [Releases page](https://github.com/clerdoapp/clerd
 | macOS | `.dmg` (Apple Silicon and Intel) |
 | Linux | `.AppImage` (any distro), `.deb` (Ubuntu, Debian, Mint), `.rpm` (Fedora, openSUSE) or `.tar.gz` |
 | iPad and web | Open [clerdoapp.github.io/clerdogrid](https://clerdoapp.github.io/clerdogrid/) in Safari, then **Share > Add to Home Screen** |
+| With a Clerdo account | [grid.clerdo.app](https://grid.clerdo.app): the same app with cloud saving, version history and share links |
 | Command line | `clerdogrid-cli-<version>.mjs` (runs with Node 20 or later; see [docs/cli.md](docs/cli.md)) |
 
 The builds aren't code-signed yet:
@@ -86,6 +87,7 @@ npm run dist    # desktop installers for this system
 npm run examples        # rebuild the sample workbooks
 npm run docs:functions  # rebuild docs/functions.md
 npm run cli             # build the command-line tool into dist-cli/
+npm run build:cloud     # the grid.clerdo.app build (backend in server/, see server/README.md)
 ```
 
 More in [docs/development.md](docs/development.md), [docs/architecture.md](docs/architecture.md), [docs/releasing.md](docs/releasing.md), [docs/cli.md](docs/cli.md), [docs/mcp.md](docs/mcp.md) and [docs/collaboration.md](docs/collaboration.md).

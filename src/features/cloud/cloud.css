@@ -1,0 +1,8 @@
+.cg-cloud-row { display: flex; align-items: center; gap: 4px; }
+.cg-cloud-row > .tool:first-child { flex: 1; min-width: 0; }
+.cg-cloud-row > .tool:first-child span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-cloud-link { width: 100%; font: inherit; font-size: 12px; padding: 4px 6px; border: 1px solid var(--line, #ccc); border-radius: 6px; background: transparent; color: inherit; }
+.cg-cloud-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); padding: 2px 8px; border-radius: 999px; white-space: nowrap; background: none; border: 0; font-family: inherit; }
+.cg-cloud-chip.error, .cg-cloud-chip.conflict { color: #b42318; }
+button.cg-cloud-chip { cursor: pointer; }
+@media (max-width: 700px) { .cg-cloud-chip > span { display: none; } }

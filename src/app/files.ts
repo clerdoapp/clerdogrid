@@ -188,9 +188,13 @@ export const bytesFor = (store: GridStore, format: string): Uint8Array => {
   } finally { for (const u of undo.reverse()) u?.(); }
 };
 
+/** Lets a feature take over plain Save (the cloud build saves cloud workbooks there). Returns true when it saved. */
+export const saveHandlers: { cloud: ((store: GridStore) => Promise<boolean>) | null } = { cloud: null };
+
 /** Saves in the file's own type, or in `format` (which then becomes the file's type). */
 export const saveFile = async (store: GridStore, saveAs = false, format?: string): Promise<void> => {
   store.commitEdit();
+  if (!saveAs && !format && saveHandlers.cloud && await saveHandlers.cloud(store)) return;
   const type = format ?? (store.file.format && SAVE_TYPES[store.file.format] ? store.file.format : 'xlsx');
   const t = SAVE_TYPES[type]!;
   const changing = type !== (store.file.format ?? 'xlsx');

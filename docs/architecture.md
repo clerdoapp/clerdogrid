@@ -1,6 +1,6 @@
 # Architecture
 
-ClerdoGrid is one TypeScript code base that runs in the browser (and as a home-screen app on iPad) and on the desktop through Electron. There is no server.
+ClerdoGrid is one TypeScript code base that runs in the browser (and as a home-screen app on iPad) and on the desktop through Electron. The desktop app and the offline web app need no server. The build served at grid.clerdo.app (`npm run build:cloud`) adds the cloud feature and talks to the PHP backend in `server/` (see [server/README.md](../server/README.md)).
 
 ```
 src/engine     calculation: parser, evaluator, dependency graph, worksheet functions, function catalog
@@ -9,7 +9,11 @@ src/formats    .xlsx and .csv reading and writing, number formats
 src/app        the editing layer: GridStore (selection, editing, undo), commands, operations, files
 src/ui         React interface: grid canvas, formula bar, rail and panels, dialogs, charts
 electron/      desktop shell (sandboxed window, file dialogs)
+server/        PHP backend for grid.clerdo.app only: sign-in, cloud workbooks, versions, share links
 ```
+
+## Cloud build
+`src/features/cloud` registers itself only when `VITE_CLERDO_CLOUD=1` (mode `cloud`, `.env.cloud`). It adds a File panel section (sign-in, save to the cloud, the person's cloud workbooks, version history, share link), a save-state chip in the top bar and a conflict dialog. A cloud workbook is saved as .xlsx 1.5 s after the last change, with the revision it was based on; if another window saved first the server answers 409 and the person picks a version. Plain Save goes to the cloud through `saveHandlers.cloud` in `app/files.ts`. `?p=<id>` opens a cloud workbook and `?s=<token>` a copy of a shared one.
 
 ## Calculation
 - **Parser** (`engine/parser.ts`) turns formula text into a tree and back. Formulas are stored in English with commas, like the file format.

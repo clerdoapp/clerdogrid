@@ -44,10 +44,18 @@ const csp = (): Plugin => ({
   transformIndexHtml: (html) => html.replace('<title>', `<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: blob: https:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; connect-src 'self' blob: data: https:; worker-src 'self' blob:; frame-src 'self' about: blob:; object-src 'none'; base-uri 'self'; form-action 'none'" />\n    <title>`),
 });
 
-export default defineConfig({
+// The build for grid.clerdo.app (`npm run build:cloud`, mode "cloud" reads .env.cloud): marks the page so the
+// deployer can tell it from the offline build, and declares it to Kelvo, which embeds Clerdo apps.
+const cloudPage = (): Plugin => ({
+  name: 'clerdogrid-cloud-page',
+  apply: 'build',
+  transformIndexHtml: (html) => html.replace('<title>', '<meta name="clerdo-cloud-build" content="1" />\n    <meta name="kelvo-app" content="grid" />\n    <title>'),
+});
+
+export default defineConfig(({ mode }) => ({
   base: './',
   define: { __APP_VERSION__: JSON.stringify(JSON.parse(readFileSync('package.json', 'utf8')).version) },
-  plugins: [react(), offline(), csp()],
+  plugins: [react(), offline(), csp(), ...(mode === 'cloud' ? [cloudPage()] : [])],
   build: { target: ['es2022', 'safari16'], sourcemap: false, chunkSizeWarningLimit: 2000 },
   test: { environment: 'node', include: ['tests/**/*.test.ts'] },
-} as never);
+}) as never);

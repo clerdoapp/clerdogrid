@@ -1,0 +1,68 @@
+# Grid — grid.clerdo.app (LiteSpeed / Apache 2.4)
+
+Options -Indexes -MultiViews
+DirectoryIndex index.html
+
+<IfModule mod_headers.c>
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob: https:; connect-src 'self' blob: data: https:; worker-src 'self' blob:; frame-src 'self' about: blob:; object-src 'none'; frame-ancestors 'self' https://kelvo.clerdo.app; base-uri 'self'; form-action 'self' https://auth.clerdo.app"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Header unset X-Frame-Options
+    Header unset X-Powered-By
+
+    # Service worker and the SPA shell must never be cached.
+    <FilesMatch "^(sw\.js|index\.html|manifest\.webmanifest|manifest\.json)$">
+        Header set Cache-Control "no-cache, no-store, must-revalidate"
+    </FilesMatch>
+</IfModule>
+
+# Hashed build assets: cache for a year.
+<IfModule mod_expires.c>
+    ExpiresActive On
+    <FilesMatch "\.(js|css|woff2?|png|svg|jpe?g|webp|ico)$">
+        ExpiresDefault "access plus 1 year"
+    </FilesMatch>
+</IfModule>
+<IfModule mod_headers.c>
+    <If "%{REQUEST_URI} =~ m#^/assets/#">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+    </If>
+</IfModule>
+
+# Deny every PHP file except the two entry points.
+<FilesMatch "\.php$">
+    Require all denied
+</FilesMatch>
+<Files "api.php">
+    Require all granted
+</Files>
+<Files "deployment.php">
+    Require all granted
+</Files>
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+AddType application/manifest+json .webmanifest
+AddDefaultCharset utf-8
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Native app Bearer auth: make sure PHP sees the Authorization header.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
+    # API, auth and share routes → front controller
+    RewriteRule ^(api|auth|share)(/.*)?$ api.php [L,QSA]
+
+    # Existing files are served as-is
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # Everything else is the SPA
+    RewriteRule ^ index.html [L]
+</IfModule>
