@@ -329,26 +329,35 @@ final class Auth
     /** @return array{id:string,name:string,email:string,avatar:?string,plan:string}|null */
     private static function userinfo(string $accessToken): ?array
     {
-        $res = self::http('GET', (string)Config::get('auth.userinfo_url'), null, ['Authorization: Bearer ' . $accessToken, 'Accept: application/json']);
-        if ($res === null || $res['status'] !== 200) {
-            return null;
+        // Clerdo ID answers its own /me ({"user": {id, email, full_name}}); the OpenID /userinfo is tried first in case it is added.
+        $configured = (string)Config::get('auth.userinfo_url');
+        $me = preg_replace('#/userinfo$#', '/me', $configured);
+        foreach (array_unique(array_filter([$configured, $me])) as $url) {
+            $res = self::http('GET', $url, null, ['Authorization: Bearer ' . $accessToken, 'Accept: application/json']);
+            if ($res === null || $res['status'] !== 200) {
+                continue;
+            }
+            try {
+                $d = Json::decode($res['body']);
+            } catch (\JsonException) {
+                continue;
+            }
+            $u = is_array($d['user'] ?? null) ? $d['user'] : $d;
+            $id = $u['sub'] ?? $u['id'] ?? null;
+            if (!is_array($u) || $id === null || $id === '' || empty($u['email'])) {
+                continue;
+            }
+            $pic = $u['picture'] ?? $u['avatar'] ?? null;
+            $avatar = is_string($pic) && preg_match('#^https://#', $pic) ? substr($pic, 0, 500) : null;
+            return [
+                'id' => substr((string)$id, 0, 64),
+                'name' => substr((string)($u['name'] ?? $u['full_name'] ?? $u['email']), 0, 120),
+                'email' => substr((string)$u['email'], 0, 190),
+                'avatar' => $avatar,
+                'plan' => (($u['plan'] ?? 'free') === 'pro') ? 'pro' : 'free',
+            ];
         }
-        try {
-            $u = Json::decode($res['body']);
-        } catch (\JsonException) {
-            return null;
-        }
-        if (!is_array($u) || empty($u['sub'])) {
-            return null;
-        }
-        $avatar = isset($u['picture']) && is_string($u['picture']) && preg_match('#^https://#', $u['picture']) ? substr($u['picture'], 0, 500) : null;
-        return [
-            'id' => substr((string)$u['sub'], 0, 64),
-            'name' => substr((string)($u['name'] ?? ''), 0, 120),
-            'email' => substr((string)($u['email'] ?? ''), 0, 190),
-            'avatar' => $avatar,
-            'plan' => (($u['plan'] ?? 'free') === 'pro') ? 'pro' : 'free',
-        ];
+        return null;
     }
 
     private static function revokeAtIdp(string $token, string $hint): void
@@ -370,14 +379,21 @@ final class Auth
         if ($url === '' || !preg_match('#^https?://#', $url)) {
             return null;
         }
-        $ch = curl_init($url);
-        if ($ch === false) {
+        // One handle per request: the IdP's address is looked up once and the connection reused (slow DNS on the host).
+        static $shared = null;
+        $shared ??= curl_init();
+        if ($shared === false) {
+            $shared = null;
             return null;
         }
+        $ch = $shared;
+        curl_reset($ch);
         $opts = [
+            CURLOPT_URL => $url,
+            CURLOPT_DNS_CACHE_TIMEOUT => 600,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => false,
-            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_CONNECTTIMEOUT => 15,
             CURLOPT_TIMEOUT => $timeout,
             CURLOPT_HTTPHEADER => array_merge($headers, ['User-Agent: Grid/' . GRID_VERSION]),
             CURLOPT_SSL_VERIFYPEER => true,
@@ -390,13 +406,15 @@ final class Auth
         }
         curl_setopt_array($ch, $opts);
         $out = curl_exec($ch);
+        if ($out === false && in_array(curl_errno($ch), [6, 7, 28], true)) {
+            curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
+            $out = curl_exec($ch);
+        }
         if ($out === false) {
             error_log('[grid] idp http error: ' . curl_error($ch));
-            curl_close($ch);
             return null;
         }
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        curl_close($ch);
         return ['status' => $status, 'body' => (string)$out];
     }
 }

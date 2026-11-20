@@ -164,7 +164,11 @@ switch (true) {
         save($stateFile, $st);
         out(['access_token' => $access, 'token_type' => 'Bearer', 'expires_in' => ACCESS_TTL, 'refresh_token' => $refresh, 'scope' => 'openid profile email']);
 
-    case $path === '/userinfo':
+    // Real Clerdo ID only has /me ({"user": {...}}); MOCK_IDP_MODE=me-only makes /userinfo 404 like production.
+    case $path === '/userinfo' || $path === '/me':
+        if ($path === '/userinfo' && getenv('MOCK_IDP_MODE') === 'me-only') {
+            out(['error' => 'not_found'], 404);
+        }
         $h = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
         if (!preg_match('/^Bearer\s+(\S+)$/', $h, $m)) {
             header('WWW-Authenticate: Bearer');
@@ -174,7 +178,8 @@ switch (true) {
         if ($a === null || $a['exp'] < time()) {
             out(['error' => 'invalid_token'], 401);
         }
-        out($users[$a['user']]);
+        $u = $users[$a['user']];
+        out($path === '/me' ? ['user' => ['id' => $u['sub'], 'email' => $u['email'], 'full_name' => $u['name']]] : $u);
 
     case $path === '/revoke' && $method === 'POST':
         $b = jsonBody();
