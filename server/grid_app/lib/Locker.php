@@ -22,9 +22,60 @@ final class Locker
         return (string)Config::get('locker.url', '') !== '';
     }
 
+    /**
+     * Locker's library on this server (domains/locker.clerdo.app/locker_app/library.php, or config locker.path):
+     * saves then happen in this same request, with no web call. Shared hosting refuses the extra requests a
+     * web call needs ("server busy"), so this is the normal way on DirectAdmin; the web API is the fallback.
+     */
+    private static function library(): bool
+    {
+        static $ok = null;
+        if ($ok !== null) {
+            return $ok;
+        }
+        $dir = (string)Config::get('locker.path', '') ?: dirname(__DIR__, 3) . '/locker.clerdo.app/locker_app';
+        $file = rtrim($dir, '/') . '/library.php';
+        $ok = false;
+        try {
+            // @: a host with open_basedir answers "not allowed" for the other folder; then the web API is used.
+            if (@is_file($file) && @is_file(rtrim($dir, '/') . '/lib/Library.php')) {
+                require_once $file;
+                $ok = class_exists(\Locker\Library::class);
+            }
+        } catch (\Throwable $e) {
+            error_log('[grid] locker library could not load: ' . $e->getMessage());
+        }
+        return $ok;
+    }
+
+    /** Runs a library call, turning Locker's errors into this app's: 507 quota, else storage trouble. */
+    private static function direct(callable $fn): mixed
+    {
+        try {
+            return $fn();
+        } catch (\Locker\HttpError $e) {
+            if ($e->status === 507) {
+                throw new HttpError(507, 'quota', 'Your Locker is full. Free up space in Locker to keep saving there.');
+            }
+            error_log('[grid] locker library: ' . $e->status . ' ' . $e->getMessage());
+            throw new HttpError(502, 'storage', 'Locker could not be reached');
+        } catch (\Throwable $e) {
+            error_log('[grid] locker library: ' . get_class($e) . ': ' . $e->getMessage());
+            throw new HttpError(502, 'storage', 'Locker could not be reached');
+        }
+    }
+
+    private static function uid(array $s): string
+    {
+        return (string)($s['user_id'] ?? '');
+    }
+
     /** Creates the workbook file. Returns ['id' => ..., 'rev' => ...]. */
     public static function create(array $s, string $name, string $bytes): array
     {
+        if (self::library()) {
+            return self::direct(static fn(): array => \Locker\Library::create(self::uid($s), 'grid', self::fileName($name), $bytes));
+        }
         $folder = self::folder($s);
         $r = self::call($s, 'POST', '/api/files?' . http_build_query(['parent' => $folder, 'name' => self::fileName($name)]), $bytes);
         self::expect($r, [201]);
@@ -34,6 +85,19 @@ final class Locker
     /** Saves new content on top of $rev. Returns ['id', 'rev'], self::CONFLICT or self::GONE. */
     public static function replace(array $s, string $id, int $rev, string $bytes): array|string
     {
+        if (self::library()) {
+            try {
+                return \Locker\Library::replace(self::uid($s), 'grid', $id, $rev, $bytes);
+            } catch (\Locker\HttpError $e) {
+                if ($e->status === 409) {
+                    return self::CONFLICT;
+                }
+                if ($e->status === 404) {
+                    return self::GONE;
+                }
+                return self::direct(static fn() => throw $e);
+            }
+        }
         $r = self::call($s, 'PUT', '/api/items/' . rawurlencode($id) . '/content', $bytes, ['If-Match: "' . $rev . '"', 'Content-Type: application/octet-stream']);
         if ($r['status'] === 409) {
             return self::CONFLICT;
@@ -48,6 +112,9 @@ final class Locker
     /** Current revision of the file, or null when it no longer exists. */
     public static function rev(array $s, string $id): ?int
     {
+        if (self::library()) {
+            return self::direct(static fn(): ?int => \Locker\Library::rev(self::uid($s), $id));
+        }
         $r = self::call($s, 'GET', '/api/items/' . rawurlencode($id), null, [], 6);
         if ($r['status'] === 404) {
             return null;
@@ -59,6 +126,9 @@ final class Locker
     /** Current content and revision. */
     public static function fetch(array $s, string $id): array
     {
+        if (self::library()) {
+            return self::direct(static fn(): array => \Locker\Library::fetch(self::uid($s), $id));
+        }
         $r = self::call($s, 'GET', '/api/items/' . rawurlencode($id) . '/content');
         self::expect($r, [200]);
         return ['bytes' => $r['body'], 'rev' => self::etag($r)];
@@ -67,6 +137,9 @@ final class Locker
     /** Content of an earlier version, or null when Locker no longer keeps it. */
     public static function version(array $s, string $id, int $rev): ?string
     {
+        if (self::library()) {
+            return self::direct(static fn(): ?string => \Locker\Library::version(self::uid($s), $id, $rev));
+        }
         $r = self::call($s, 'GET', '/api/items/' . rawurlencode($id) . '/versions/' . $rev . '/content');
         if ($r['status'] === 404) {
             return null;
@@ -77,6 +150,10 @@ final class Locker
 
     public static function rename(array $s, string $id, string $name): void
     {
+        if (self::library()) {
+            self::direct(static fn() => \Locker\Library::rename(self::uid($s), $id, self::fileName($name)));
+            return;
+        }
         $r = self::call($s, 'PATCH', '/api/items/' . rawurlencode($id), Json::encode(['name' => self::fileName($name)]), ['Content-Type: application/json']);
         self::expect($r, [200, 404]);
     }
@@ -84,6 +161,10 @@ final class Locker
     /** Sends the file to the Locker Bin, where the user can still get it back for 30 days. */
     public static function trash(array $s, string $id): void
     {
+        if (self::library()) {
+            self::direct(static fn() => \Locker\Library::trash(self::uid($s), $id));
+            return;
+        }
         $r = self::call($s, 'POST', '/api/items/' . rawurlencode($id) . '/trash', '');
         self::expect($r, [200, 404]);
     }

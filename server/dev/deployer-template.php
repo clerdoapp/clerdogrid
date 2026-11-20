@@ -606,6 +606,11 @@ try {
                 curl_close($ch);
                 $b .= ($code > 0 ? '<li class=ok>' : '<li class=bad>') . 'HEAD <code>' . h($u) . '</code> → ' . ($code ?: h($err)) . '</li>';
             }
+            // Saving into Locker happens in-process through Locker's library when this host can see it.
+            $lib = $DOMAINS . '/locker.clerdo.app/locker_app/library.php';
+            $seen = @is_file($lib) && @is_readable($lib);
+            $b .= ($seen ? '<li class=ok>' : '<li class=bad>') . 'Locker library <code>' . h($lib) . '</code> → '
+                . ($seen ? 'found: saves go straight into Locker' : 'not visible (update Locker, or this host blocks other folders): saves use the web route') . '</li>';
             // The apps reach other Clerdo sites through this server's own address first (slow DNS on the host).
             $own = (string)($_SERVER['SERVER_ADDR'] ?? '');
             foreach (array_unique([(string)Grid\Config::get('auth.authorize_url'), 'https://locker.clerdo.app/api/me']) as $u) {

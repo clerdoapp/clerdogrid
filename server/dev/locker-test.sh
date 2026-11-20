@@ -8,6 +8,10 @@ RUN="$ROOT/dev/.run-locker"; mkdir -p "$RUN"
 export GRID_RUN_DIR="$RUN" GRID_SQLITE="$RUN/grid.sqlite" GRID_IDP_STATE="$RUN/idp.json"
 export GRID_APP_PORT=8180 GRID_IDP_PORT=8190 GRID_LOCKER_URL=http://127.0.0.1:8280
 export LOCKER_RUN_DIR="$RUN/locker" LOCKER_SQLITE="$RUN/locker.sqlite" LOCKER_STORAGE="$RUN/locker-data"
+# LOCKER_MODE=direct: the app loads Locker's library in-process (as on the server); default: the web API.
+if [ "${LOCKER_MODE:-web}" = direct ]; then
+  export GRID_LOCKER_PATH="$LOCKER_ROOT/server/locker_app" LOCKER_CONFIG="$LOCKER_ROOT/server/dev/config.dev.php"
+fi
 APPKEY=joint-test-key-0123456789abcdefghijklmnopqr
 export GRID_LOCKER_APP_KEY="$APPKEY" LOCKER_APP_KEYS="{\"grid\":\"$APPKEY\"}"
 export LOCKER_APP_PORT=8280 LOCKER_IDP_PORT=8290 LOCKER_IDP=http://127.0.0.1:8190 LOCKER_IDP_STATE="$RUN/locker-idp.json"
@@ -131,10 +135,11 @@ mreq "$J1" "$CSRF" POST /api/projects "@$RUN/body.json"; P2=$(echo "$BODY" | jq_
 bash "$LOCKER_ROOT/server/dev/start.sh" stop >/dev/null
 body "$WB2" '{"baseRevision":1}'
 mreq "$J1" "$CSRF" PUT "/api/projects/$P2" "@$RUN/body.json"
-check "save still works" "$CODE/$(echo "$BODY" | jq_ project.storage)" "200/pending"
+WANT_OFF=$([ "${LOCKER_MODE:-web}" = direct ] && echo locker || echo pending)
+check "save still works" "$CODE/$(echo "$BODY" | jq_ project.storage)" "200/$WANT_OFF"
 bash "$LOCKER_ROOT/server/dev/start.sh" >/dev/null
 req "$J1" GET "/api/projects/$P2"
-check "opens from its own copy while pending" "$CODE/$(echo "$BODY" | jq_ project.storage)" "200/pending"
+check "opens from its own copy while pending" "$CODE/$(echo "$BODY" | jq_ project.storage)" "200/$WANT_OFF"
 body "$WB2" "{\"baseRevision\":$(echo "$BODY" | jq_ project.revision)}"
 mreq "$J1" "$CSRF" PUT "/api/projects/$P2" "@$RUN/body.json"
 check "back in Locker with the next save" "$(echo "$BODY" | jq_ project.storage)" locker
@@ -167,6 +172,10 @@ check "401, not 500" "$CODE" 401
 echo "== Locker trusted the app's signed note"
 ASKED=$(php -r '$db=new PDO("sqlite:".$argv[1]); echo $db->query("SELECT COUNT(*) FROM locker_sessions WHERE kind=\x27bearer\x27")->fetchColumn();' "$LOCKER_SQLITE")
 check "Locker asked Clerdo ID only for this test's own direct checks" "$ASKED" 1
+if [ "${LOCKER_MODE:-web}" = direct ]; then
+  APPCALLS=$(grep -c "POST /api/files\|PUT /api/items" "$LOCKER_RUN_DIR/app.log" 2>/dev/null || true)
+  check "saves went in-process, not over the web" "${APPCALLS:-0}" 0
+fi
 echo
 echo "passed: $PASS   failed: $FAIL"
 [ "$FAIL" -eq 0 ]
