@@ -183,7 +183,18 @@ final class Locker
             $opts[CURLOPT_POSTFIELDS] = $body;
         }
         curl_setopt_array($ch, $opts);
+        @set_time_limit(120);
+        $url = (string)$opts[CURLOPT_URL];
+        $pinned = DnsCache::options($url);
+        if ($pinned !== []) {
+            curl_setopt_array($ch, $pinned);
+        }
         $out = curl_exec($ch);
+        if ($out === false && $pinned !== []) {
+            DnsCache::unpin($ch, $url);
+            $got = [];
+            $out = curl_exec($ch);
+        }
         if ($out === false && in_array(curl_errno($ch), [6, 7, 28], true)) {
             $got = [];
             curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
@@ -193,6 +204,7 @@ final class Locker
             error_log('[grid] locker http error: ' . curl_error($ch));
             throw new HttpError(502, 'storage', 'Locker could not be reached');
         }
+        DnsCache::remember($ch, $url);
         return ['status' => (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE), 'body' => (string)$out, 'headers' => $got];
     }
 }

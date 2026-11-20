@@ -424,7 +424,17 @@ final class Auth
             $opts[CURLOPT_POSTFIELDS] = $body ?? '';
         }
         curl_setopt_array($ch, $opts);
+        // A slow address lookup must not push the request past PHP's time limit (that was a 500).
+        @set_time_limit(120);
+        $pinned = DnsCache::options($url);
+        if ($pinned !== []) {
+            curl_setopt_array($ch, $pinned);
+        }
         $out = curl_exec($ch);
+        if ($out === false && $pinned !== []) {
+            DnsCache::unpin($ch, $url);
+            $out = curl_exec($ch);
+        }
         if ($out === false && in_array(curl_errno($ch), [6, 7, 28], true)) {
             curl_setopt($ch, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4);
             $out = curl_exec($ch);
@@ -433,6 +443,7 @@ final class Auth
             error_log('[grid] idp http error: ' . curl_error($ch));
             return null;
         }
+        DnsCache::remember($ch, $url);
         $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
         return ['status' => $status, 'body' => (string)$out];
     }
