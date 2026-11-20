@@ -10,6 +10,8 @@ namespace Grid;
  */
 final class Auth
 {
+    private static ?string $bearer = null;
+
     public const COOKIE = 'grid_sid';
     public const SESSION_TTL = 30 * 86400;
     public const IDLE_TTL = 14 * 86400;
@@ -144,6 +146,22 @@ final class Auth
 
     // --------------------------------------------------------------- sessions
 
+    /** The user's Clerdo ID access token, for calling other Clerdo services (Locker) on their behalf. */
+    public static function accessToken(array $s): ?string
+    {
+        if (($s['kind'] ?? 'cookie') === 'bearer') {
+            return self::$bearer;
+        }
+        if (empty($s['access_enc'])) {
+            return null;
+        }
+        try {
+            return Crypto::decrypt((string)$s['access_enc']);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public static function plan(array $s): string
     {
         if ((bool)Config::get('pro.everyone_has_pro', true)) {
@@ -194,6 +212,7 @@ final class Auth
         }
         $authz = Http::header('Authorization');
         if ($authz !== null && preg_match('/^Bearer\s+([A-Za-z0-9\-._~+\/=]{16,2048})$/', $authz, $m)) {
+            self::$bearer = $m[1];
             self::$session = self::resolveBearer($m[1]);
             return self::$session;
         }

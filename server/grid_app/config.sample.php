@@ -46,4 +46,10 @@ return [
     'app' => [
         'base_url' => 'https://grid.clerdo.app',
     ],
+
+    // Workbooks are stored in the user's Locker (folder "Grid") with version history.
+    // Empty keeps them in Grid's own database only.
+    'locker' => [
+        'url' => 'https://locker.clerdo.app',
+    ],
 ];

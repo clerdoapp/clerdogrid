@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': 'Arbete',
   'Creative': 'Kreativt',
   'Business & platform': 'Företag och plattform',
+  'Saved in Locker': 'Sparat i Locker',
+  'Locker could not be reached. It will be updated with your next save.': 'Det gick inte att nå Locker. Den uppdateras nästa gång du sparar.',
 };
 export default catalog;

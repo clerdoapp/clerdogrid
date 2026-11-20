@@ -13,7 +13,7 @@ export class CloudError extends Error {
 
 export interface CloudUser { id: string; name: string; email: string; avatar: string | null }
 export interface Me { user: CloudUser; csrf: string | null; limits: { projects: number | null; docBytes: number } }
-export interface CloudMeta { id: string; name: string; revision: number; updatedAt: string; createdAt: string; bytes: number; sheets: number; starred: boolean; archived: boolean }
+export interface CloudMeta { id: string; name: string; revision: number; updatedAt: string; createdAt: string; bytes: number; sheets: number; starred: boolean; archived: boolean; storage?: 'grid' | 'locker' | 'pending'; lockerId?: string | null }
 export interface Version { revision: number; savedAt: string; bytes: number }
 export interface Conflict { project: CloudMeta; workbook: string }
 

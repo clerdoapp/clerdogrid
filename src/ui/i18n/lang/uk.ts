@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': 'Робота',
   'Creative': 'Творчість',
   'Business & platform': 'Бізнес і платформа',
+  'Saved in Locker': 'Збережено в Locker',
+  'Locker could not be reached. It will be updated with your next save.': 'Не вдалося підключитися до Locker. Його буде оновлено під час наступного збереження.',
 };
 export default catalog;

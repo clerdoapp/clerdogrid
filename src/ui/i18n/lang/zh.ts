@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': '工作',
   'Creative': '创意',
   'Business & platform': '业务与平台',
+  'Saved in Locker': '已保存到 Locker',
+  'Locker could not be reached. It will be updated with your next save.': '无法连接到 Locker。下次保存时会更新。',
 };
 export default catalog;

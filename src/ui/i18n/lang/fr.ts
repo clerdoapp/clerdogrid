@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': 'Travail',
   'Creative': 'Création',
   'Business & platform': 'Entreprise et plateforme',
+  'Saved in Locker': 'Enregistré dans Locker',
+  'Locker could not be reached. It will be updated with your next save.': 'Locker est injoignable. Il sera mis à jour lors du prochain enregistrement.',
 };
 export default catalog;

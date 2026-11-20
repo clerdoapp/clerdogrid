@@ -26,6 +26,10 @@ $clients = [
     ]))],
     'grid-ios' => ['redirects' => ['grid://auth/callback']],
 ];
+// Locker next to Grid (locker-test.sh): the same sign-in for both, as with Clerdo ID.
+if (getenv('LOCKER_APP_PORT')) {
+    $clients['locker-web'] = ['redirects' => ['http://127.0.0.1:' . getenv('LOCKER_APP_PORT') . '/auth/callback']];
+}
 
 $stateFile = getenv('GRID_IDP_STATE') ?: STATE_FILE_DEFAULT;
 

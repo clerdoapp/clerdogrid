@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': 'Werk',
   'Creative': 'Creatief',
   'Business & platform': 'Zakelijk en platform',
+  'Saved in Locker': 'Opgeslagen in Locker',
+  'Locker could not be reached. It will be updated with your next save.': 'Locker was niet bereikbaar. Hij wordt bijgewerkt bij de volgende keer opslaan.',
 };
 export default catalog;

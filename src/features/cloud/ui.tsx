@@ -111,10 +111,12 @@ const ShareLink = ({ store, id }: { store: GridStore; id: string }) => {
 export const SaveChip = ({ store }: { store: GridStore }) => {
   const { binding } = useCloud();
   if (!binding || binding.wb !== store.wb) return null;
-  const text = binding.status === 'saved' ? T('Saved to the cloud') : binding.status === 'saving' ? T('Saving…') : binding.status === 'error' ? T('Could not save. Trying again…') : T('Not saved yet');
+  const saved = binding.storage === 'locker' ? T('Saved in Locker') : T('Saved to the cloud');
+  const text = binding.status === 'saved' ? saved : binding.status === 'saving' ? T('Saving…') : binding.status === 'error' ? T('Could not save. Trying again…') : T('Not saved yet');
   const Icon = binding.status === 'error' || binding.status === 'conflict' ? CloudOff : Cloud;
   if (binding.status === 'conflict') return <button className={`cg-cloud-chip ${binding.status}`} onClick={() => openDialog(store, 'cloud.conflict')}><Icon size={14} /><span>{T('Changed somewhere else')}</span></button>;
-  return <span className={`cg-cloud-chip ${binding.status}`} role="status" title={text}><Icon size={14} /><span>{text}</span></span>;
+  const hint = binding.status === 'saved' && binding.storage === 'pending' ? T('Locker could not be reached. It will be updated with your next save.') : text;
+  return <span className={`cg-cloud-chip ${binding.status}`} role="status" title={hint}><Icon size={14} /><span>{text}</span></span>;
 };
 
 export const ConflictDialog = ({ store, close }: DialogProps) => (

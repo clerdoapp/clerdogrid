@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': 'काम',
   'Creative': 'रचनात्मक',
   'Business & platform': 'व्यवसाय और प्लेटफ़ॉर्म',
+  'Saved in Locker': 'Locker में सहेजा गया',
+  'Locker could not be reached. It will be updated with your next save.': 'Locker तक नहीं पहुँचा जा सका। अगली बार सहेजने पर यह अपडेट हो जाएगा।',
 };
 export default catalog;

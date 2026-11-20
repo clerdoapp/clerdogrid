@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': '仕事',
   'Creative': 'クリエイティブ',
   'Business & platform': 'ビジネスとプラットフォーム',
+  'Saved in Locker': 'Locker に保存しました',
+  'Locker could not be reached. It will be updated with your next save.': 'Locker に接続できませんでした。次回の保存時に更新されます。',
 };
 export default catalog;

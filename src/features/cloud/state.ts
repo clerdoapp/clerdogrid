@@ -12,7 +12,7 @@ export const cloudEnabled = (): boolean => import.meta.env.VITE_CLERDO_CLOUD ===
 export type SessionState = { status: 'unknown' } | { status: 'signedOut' } | { status: 'signedIn'; me: Me } | { status: 'error' };
 export type SaveStatus = 'saved' | 'saving' | 'dirty' | 'error' | 'conflict';
 
-interface Binding { wb: Workbook; id: string; revision: number; name: string; status: SaveStatus; conflict?: Conflict }
+interface Binding { wb: Workbook; id: string; revision: number; name: string; status: SaveStatus; storage: CloudMeta['storage']; conflict?: Conflict }
 
 const AUTOSAVE_MS = 1500;
 const RETRY_MS = 10_000;
@@ -64,7 +64,7 @@ const setUrl = (id: string | null): void => {
 };
 
 const bind = (store: GridStore, meta: CloudMeta): void => {
-  binding = { wb: store.wb, id: meta.id, revision: meta.revision, name: meta.name, status: 'saved' };
+  binding = { wb: store.wb, id: meta.id, revision: meta.revision, name: meta.name, status: 'saved', storage: meta.storage };
   store.file = { ...store.file, dirty: false, lastSaved: Date.now(), path: null, handle: undefined };
   setUrl(meta.id);
   watch(store);
@@ -123,10 +123,11 @@ export const saveNow = async (store: GridStore): Promise<void> => {
     const meta = await cloud.save(target.id, target.revision, payload.b64, payload.sheets, store.file.name || target.name);
     target.revision = meta.revision;
     target.name = meta.name;
+    target.storage = meta.storage;
     target.status = store.file.dirty ? 'dirty' : 'saved';
     store.file.lastSaved = Date.now();
     store.emit();
-    postToKelvo({ type: 'toast', text: T('Saved to the cloud') });
+    postToKelvo({ type: 'toast', text: meta.storage === 'locker' ? T('Saved in Locker') : T('Saved to the cloud') });
   } catch (e) {
     store.file.dirty = true;
     if (e instanceof CloudError && e.code === 'conflict') {

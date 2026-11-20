@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': 'İş',
   'Creative': 'Yaratıcı',
   'Business & platform': 'İşletme ve platform',
+  'Saved in Locker': 'Locker\'a kaydedildi',
+  'Locker could not be reached. It will be updated with your next save.': 'Locker\'a ulaşılamadı. Bir sonraki kaydetmede güncellenecek.',
 };
 export default catalog;

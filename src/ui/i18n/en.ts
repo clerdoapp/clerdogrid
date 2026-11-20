@@ -2960,4 +2960,6 @@ export const en = {
   'Work': 'Work',
   'Creative': 'Creative',
   'Business & platform': 'Business & platform',
+  'Saved in Locker': 'Saved in Locker',
+  'Locker could not be reached. It will be updated with your next save.': 'Locker could not be reached. It will be updated with your next save.',
 } as const;

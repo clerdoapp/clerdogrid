@@ -2962,5 +2962,7 @@ const catalog: Catalog = {
   'Work': '업무',
   'Creative': '크리에이티브',
   'Business & platform': '비즈니스 및 플랫폼',
+  'Saved in Locker': 'Locker에 저장됨',
+  'Locker could not be reached. It will be updated with your next save.': 'Locker에 연결할 수 없습니다. 다음에 저장할 때 업데이트됩니다.',
 };
 export default catalog;

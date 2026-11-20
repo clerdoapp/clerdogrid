@@ -10,3 +10,5 @@ vite.scratch.config.ts
 server/dev/.run
 server/deploy
 server/grid_app/config.php
+server/dev/.run-locker/
+server/dev/.run-ui/

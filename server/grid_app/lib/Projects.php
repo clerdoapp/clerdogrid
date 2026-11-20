@@ -120,6 +120,9 @@ final class Projects
                     created_at DATETIME NOT NULL,
                     updated_at DATETIME NOT NULL,
                     opened_at DATETIME NULL,
+                    locker_id CHAR(36) NULL,
+                    locker_rev INT NULL,
+                    locker_pending TINYINT(1) NOT NULL DEFAULT 0,
                     INDEX ix_grid_projects_user (user_id, archived, updated_at)
                 )" . $tail,
                 [
@@ -134,6 +137,9 @@ final class Projects
                     'tags' => 'TEXT NULL',
                     'notes' => 'TEXT NULL',
                     'opened_at' => 'DATETIME NULL',
+                    'locker_id' => 'CHAR(36) NULL',
+                    'locker_rev' => 'INT NULL',
+                    'locker_pending' => 'TINYINT(1) NOT NULL DEFAULT 0',
                 ],
             ],
             'grid_project_revisions' => [
@@ -145,11 +151,13 @@ final class Projects
                     format VARCHAR(8) NOT NULL DEFAULT 'xlsx',
                     bytes INT NOT NULL DEFAULT 0,
                     saved_at DATETIME NOT NULL,
+                    locker_rev INT NULL,
                     INDEX ix_grid_revisions_project (project_id, revision)
                 )" . $tail,
                 [
                     'format' => "VARCHAR(8) NOT NULL DEFAULT 'json'",
                     'bytes' => 'INT NOT NULL DEFAULT 0',
+                    'locker_rev' => 'INT NULL',
                 ],
             ],
             'grid_shares' => [
@@ -214,13 +222,15 @@ final class Projects
              VALUES (?, ?, ?, ?, \'xlsx\', 1, ?, ?, ?, 0, 0, \'\', \'\', \'[]\', \'\', ?, ?, ?)',
             [$id, $s['user_id'], $name, $b64, self::decodedSize($b64), $sheets, $thumb, $now, $now, $now]
         );
+        $row = self::ownRow($s, $id);
+        self::setLocker($id, self::pushToLocker($s, $row, base64_decode($b64), $name));
         Json::send(['project' => self::meta(self::ownRow($s, $id))], 201);
     }
 
     public static function get(array $p, array $body): void
     {
         $s = Auth::requireUser();
-        $row = self::ownRow($s, $p['id']);
+        $row = self::syncFromLocker($s, self::ownRow($s, $p['id']));
         Db::exec('UPDATE grid_projects SET opened_at = ? WHERE id = ?', [Clock::sql(), $row['id']]);
         Json::send(['project' => self::meta($row), 'workbook' => self::workbookOf($row)]);
     }
@@ -247,8 +257,12 @@ final class Projects
             if ((int)$row['revision'] !== $base) {
                 return ['conflict' => $row];
             }
-            self::keepRevision($row);
             $name = $hasName ? self::cleanName($body['name'], $row['name']) : $row['name'];
+            $locker = self::pushToLocker($s, $row, base64_decode($b64), $name);
+            if (isset($locker['conflict'])) {
+                return ['conflict' => self::adoptFromLocker($s, $row)];
+            }
+            self::keepRevision($row, ($locker['locker_pending'] ?? 1) === 0);
             Db::exec(
                 'UPDATE grid_projects SET document = ?, format = \'xlsx\', revision = ?, bytes = ?, sheets = ?, name = ?, updated_at = ?'
                 . ($hasThumb ? ', thumbnail = ?' : '') . ' WHERE id = ?',
@@ -258,6 +272,10 @@ final class Projects
                     [$id]
                 )
             );
+            self::setLocker($id, $locker);
+            if ($hasName && $name !== $row['name'] && !empty($row['locker_id']) && !isset($locker['locker_id'])) {
+                self::renameInLocker($s, (string)$row['locker_id'], $name);
+            }
             return ['saved' => true];
         });
 
@@ -303,7 +321,11 @@ final class Projects
             $vals[] = $row['id'];
             Db::exec('UPDATE grid_projects SET ' . implode(', ', $sets) . ' WHERE id = ?', $vals);
         }
-        Json::send(['project' => self::meta(self::ownRow($s, $row['id']))]);
+        $fresh = self::ownRow($s, $row['id']);
+        if ($fresh['name'] !== $row['name'] && !empty($row['locker_id'])) {
+            self::renameInLocker($s, (string)$row['locker_id'], $fresh['name']);
+        }
+        Json::send(['project' => self::meta($fresh)]);
     }
 
     public static function duplicate(array $p, array $body): void
@@ -331,6 +353,15 @@ final class Projects
     {
         $s = Auth::requireUser();
         $row = self::ownRow($s, $p['id']);
+        if (!empty($row['locker_id']) && Locker::enabled()) {
+            try {
+                Locker::trash($s, (string)$row['locker_id']);
+            } catch (HttpError $e) {
+                if (!self::isLockerTrouble($e)) {
+                    throw $e;
+                }
+            }
+        }
         Db::tx(static function () use ($row): void {
             Db::exec('DELETE FROM grid_project_revisions WHERE project_id = ?', [$row['id']]);
             Db::exec('DELETE FROM grid_shares WHERE project_id = ?', [$row['id']]);
@@ -366,17 +397,24 @@ final class Projects
         }
         $rev = (int)$p['rev'];
         $id = $row['id'];
-        Db::tx(static function () use ($id, $rev): void {
+        Db::tx(static function () use ($s, $id, $rev): void {
             $cur = Db::one('SELECT * FROM grid_projects WHERE id = ? FOR UPDATE', [$id]);
             $old = Db::one('SELECT * FROM grid_project_revisions WHERE project_id = ? AND revision = ? ORDER BY id DESC LIMIT 1', [$id, $rev]);
             if ($cur === null || $old === null) {
                 throw new HttpError(404, 'not_found', 'Version not found');
             }
-            self::keepRevision($cur);
+            $b64 = self::revisionWorkbook($s, $cur, $old);
+            $locker = self::pushToLocker($s, $cur, base64_decode($b64), $cur['name']);
+            if (isset($locker['conflict'])) {
+                self::adoptFromLocker($s, $cur);
+                throw new HttpError(409, 'conflict', 'The workbook was changed somewhere else. Try again.');
+            }
+            self::keepRevision($cur, ($locker['locker_pending'] ?? 1) === 0);
             Db::exec(
-                'UPDATE grid_projects SET document = ?, format = ?, revision = ?, bytes = ?, updated_at = ? WHERE id = ?',
-                [$old['document'], $old['format'], (int)$cur['revision'] + 1, (int)$old['bytes'], Clock::sql(), $id]
+                'UPDATE grid_projects SET document = ?, format = \'xlsx\', revision = ?, bytes = ?, updated_at = ? WHERE id = ?',
+                [$b64, (int)$cur['revision'] + 1, self::decodedSize($b64), Clock::sql(), $id]
             );
+            self::setLocker($id, $locker);
         });
         $row = self::ownRow($s, $id);
         Json::send(['project' => self::meta($row), 'workbook' => self::workbookOf($row)]);
@@ -384,12 +422,16 @@ final class Projects
 
     // ---------------------------------------------------------------- helpers
 
-    /** Files the current state of a row as a revision and trims the history to KEEP_REVISIONS. */
-    private static function keepRevision(array $row): void
+    /**
+     * Files the current state of a row as a revision and trims the history to KEEP_REVISIONS.
+     * When Locker now keeps that content as a version, only the Locker revision is stored.
+     */
+    private static function keepRevision(array $row, bool $keptByLocker = false): void
     {
+        $inLocker = $keptByLocker && !empty($row['locker_id']) && (int)($row['locker_pending'] ?? 0) === 0 && $row['locker_rev'] !== null;
         Db::exec(
-            'INSERT INTO grid_project_revisions (project_id, revision, document, format, bytes, saved_at) VALUES (?, ?, ?, ?, ?, ?)',
-            [$row['id'], (int)$row['revision'], $row['document'], $row['format'] ?? 'json', (int)$row['bytes'], $row['updated_at']]
+            'INSERT INTO grid_project_revisions (project_id, revision, document, format, bytes, saved_at, locker_rev) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [$row['id'], (int)$row['revision'], $inLocker ? '' : $row['document'], $row['format'] ?? 'json', (int)$row['bytes'], $row['updated_at'], $inLocker ? (int)$row['locker_rev'] : null]
         );
         $stale = Db::all(
             'SELECT id FROM grid_project_revisions WHERE project_id = ? ORDER BY revision DESC, id DESC LIMIT 100 OFFSET ' . self::KEEP_REVISIONS,
@@ -398,6 +440,130 @@ final class Projects
         foreach ($stale as $o) {
             Db::exec('DELETE FROM grid_project_revisions WHERE id = ?', [(int)$o['id']]);
         }
+    }
+
+    // ---------------------------------------------------------------- Locker
+
+    /**
+     * Puts the workbook in the user's Locker. Returns the Locker columns to store, or ['conflict' => true]
+     * when the file was changed in Locker first. Locker trouble never loses a save: the row is marked
+     * pending and sent with a later save.
+     */
+    private static function pushToLocker(array $s, array $row, string $bytes, string $name): array
+    {
+        if (!Locker::enabled()) {
+            return [];
+        }
+        try {
+            if (!empty($row['locker_id'])) {
+                $r = Locker::replace($s, (string)$row['locker_id'], (int)$row['locker_rev'], $bytes);
+                if ($r === Locker::CONFLICT) {
+                    return ['conflict' => true];
+                }
+                if ($r !== Locker::GONE) {
+                    return ['locker_rev' => $r['rev'], 'locker_pending' => 0];
+                }
+            }
+            $f = Locker::create($s, $name, $bytes);
+            return ['locker_id' => $f['id'], 'locker_rev' => $f['rev'], 'locker_pending' => 0];
+        } catch (HttpError $e) {
+            if (!self::isLockerTrouble($e)) {
+                throw $e;
+            }
+            return ['locker_pending' => 1];
+        }
+    }
+
+    /** Takes the file's current content from Locker after it was changed there; Grid's copy becomes a revision. */
+    private static function adoptFromLocker(array $s, array $row): array
+    {
+        $f = Locker::fetch($s, (string)$row['locker_id']);
+        $b64 = base64_encode($f['bytes']);
+        self::keepRevision($row);
+        Db::exec(
+            'UPDATE grid_projects SET document = ?, format = \'xlsx\', revision = ?, bytes = ?, locker_rev = ?, locker_pending = 0, updated_at = ? WHERE id = ?',
+            [$b64, (int)$row['revision'] + 1, strlen($f['bytes']), $f['rev'], Clock::sql(), $row['id']]
+        );
+        return Db::one('SELECT * FROM grid_projects WHERE id = ?', [$row['id']]) ?? $row;
+    }
+
+    /**
+     * On open: moves a workbook from before Locker into it, sends a pending save, or picks up a change
+     * made in Locker. If Locker can't be reached, Grid's own copy opens.
+     */
+    private static function syncFromLocker(array $s, array $row): array
+    {
+        if (!Locker::enabled()) {
+            return $row;
+        }
+        try {
+            if (empty($row['locker_id']) || (int)$row['locker_pending'] === 1) {
+                $locker = self::pushToLocker($s, $row, base64_decode(self::workbookOf($row)), $row['name']);
+                if (!isset($locker['conflict'])) {
+                    self::setLocker($row['id'], $locker);
+                }
+                return self::ownRow($s, $row['id']);
+            }
+            $rev = Locker::rev($s, (string)$row['locker_id']);
+            if ($rev === null) {
+                Db::exec('UPDATE grid_projects SET locker_id = NULL, locker_rev = NULL, locker_pending = 1 WHERE id = ?', [$row['id']]);
+                return self::ownRow($s, $row['id']);
+            }
+            if ($rev !== (int)$row['locker_rev']) {
+                return Db::tx(static function () use ($s, $row): array {
+                    $cur = Db::one('SELECT * FROM grid_projects WHERE id = ? FOR UPDATE', [$row['id']]) ?? $row;
+                    return self::adoptFromLocker($s, $cur);
+                });
+            }
+        } catch (HttpError $e) {
+            if (!self::isLockerTrouble($e)) {
+                throw $e;
+            }
+        }
+        return $row;
+    }
+
+    /** A saved revision's workbook: Grid's own copy, or the version Locker keeps. */
+    private static function revisionWorkbook(array $s, array $cur, array $old): string
+    {
+        if ((string)$old['document'] !== '') {
+            return self::workbookOf($old);
+        }
+        $bytes = !empty($cur['locker_id']) && $old['locker_rev'] !== null
+            ? Locker::version($s, (string)$cur['locker_id'], (int)$old['locker_rev'])
+            : null;
+        if ($bytes === null) {
+            throw new HttpError(404, 'not_found', 'That version is no longer kept');
+        }
+        return base64_encode($bytes);
+    }
+
+    private static function renameInLocker(array $s, string $lockerId, string $name): void
+    {
+        try {
+            Locker::rename($s, $lockerId, $name);
+        } catch (HttpError $e) {
+            if (!self::isLockerTrouble($e)) {
+                throw $e;
+            }
+        }
+    }
+
+    private static function setLocker(string $id, array $cols): void
+    {
+        $cols = array_intersect_key($cols, ['locker_id' => 1, 'locker_rev' => 1, 'locker_pending' => 1]);
+        if ($cols === []) {
+            return;
+        }
+        Db::exec(
+            'UPDATE grid_projects SET ' . implode(', ', array_map(static fn(string $c): string => $c . ' = ?', array_keys($cols))) . ' WHERE id = ?',
+            array_merge(array_values($cols), [$id])
+        );
+    }
+
+    private static function isLockerTrouble(HttpError $e): bool
+    {
+        return in_array($e->errorCode, ['storage', 'quota'], true);
     }
 
     /** The row's workbook as base64 .xlsx, converting a JSON document from the first Grid web app. */
@@ -480,7 +646,7 @@ final class Projects
 
     private static function metaCols(): string
     {
-        return 'id, user_id, name, revision, bytes, sheets, thumbnail, starred, archived, folder, color, tags, notes, created_at, updated_at, opened_at';
+        return 'id, user_id, name, revision, bytes, sheets, thumbnail, starred, archived, folder, color, tags, notes, created_at, updated_at, opened_at, locker_id, locker_pending';
     }
 
     public static function meta(array $r): array
@@ -498,6 +664,8 @@ final class Projects
             'bytes' => (int)$r['bytes'],
             'sheets' => (int)$r['sheets'],
             'thumbnail' => ($r['thumbnail'] ?? null) === null || $r['thumbnail'] === '' ? null : $r['thumbnail'],
+            'lockerId' => empty($r['locker_id']) || (int)($r['locker_pending'] ?? 0) === 1 ? null : $r['locker_id'],
+            'storage' => !Locker::enabled() ? 'grid' : (empty($r['locker_id']) || (int)($r['locker_pending'] ?? 0) === 1 ? 'pending' : 'locker'),
         ];
     }
 
