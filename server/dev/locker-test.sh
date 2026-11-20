@@ -8,6 +8,8 @@ RUN="$ROOT/dev/.run-locker"; mkdir -p "$RUN"
 export GRID_RUN_DIR="$RUN" GRID_SQLITE="$RUN/grid.sqlite" GRID_IDP_STATE="$RUN/idp.json"
 export GRID_APP_PORT=8180 GRID_IDP_PORT=8190 GRID_LOCKER_URL=http://127.0.0.1:8280
 export LOCKER_RUN_DIR="$RUN/locker" LOCKER_SQLITE="$RUN/locker.sqlite" LOCKER_STORAGE="$RUN/locker-data"
+APPKEY=joint-test-key-0123456789abcdefghijklmnopqr
+export GRID_LOCKER_APP_KEY="$APPKEY" LOCKER_APP_KEYS="{\"grid\":\"$APPKEY\"}"
 export LOCKER_APP_PORT=8280 LOCKER_IDP_PORT=8290 LOCKER_IDP=http://127.0.0.1:8190 LOCKER_IDP_STATE="$RUN/locker-idp.json"
 rm -rf "$RUN"/*.sqlite* "$RUN"/*.json "$LOCKER_STORAGE"; mkdir -p "$LOCKER_RUN_DIR"
 bash "$ROOT/dev/start.sh" >/dev/null || { echo "grid start failed"; exit 1; }
@@ -162,6 +164,9 @@ gridphp '\Grid\Db::exec("UPDATE grid_sessions SET refresh_enc = ?, access_expire
 req "$J1" GET /api/me
 check "401, not 500" "$CODE" 401
 
+echo "== Locker trusted the app's signed note"
+ASKED=$(php -r '$db=new PDO("sqlite:".$argv[1]); echo $db->query("SELECT COUNT(*) FROM locker_sessions WHERE kind=\x27bearer\x27")->fetchColumn();' "$LOCKER_SQLITE")
+check "Locker asked Clerdo ID only for this test's own direct checks" "$ASKED" 1
 echo
 echo "passed: $PASS   failed: $FAIL"
 [ "$FAIL" -eq 0 ]

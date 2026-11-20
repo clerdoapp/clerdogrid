@@ -147,20 +147,48 @@ final class Locker
      */
     private static function call(array $s, string $method, string $path, ?string $body = null, array $headers = [], int $timeout = 60): array
     {
-        $r = self::send(Auth::accessToken($s), $method, $path, $body, $headers, $timeout);
+        $note = self::appNote($s);
+        if ($note !== null) {
+            return self::send('ClerdoApp ' . $note, $method, $path, $body, $headers, $timeout);
+        }
+        $token = Auth::accessToken($s);
+        $r = self::send($token === null ? null : 'Bearer ' . $token, $method, $path, $body, $headers, $timeout);
         if ($r['status'] === 401) {
             $token = Auth::renewAccessToken($s);
             if ($token !== null) {
-                $r = self::send($token, $method, $path, $body, $headers, $timeout);
+                $r = self::send('Bearer ' . $token, $method, $path, $body, $headers, $timeout);
             }
         }
         return $r;
     }
 
-    /** @return array{status:int, body:string, headers:array<string,string>} */
-    private static function send(?string $token, string $method, string $path, ?string $body, array $headers, int $timeout = 60): array
+    /**
+     * With a key shared with Locker (config locker.app_key, set by Locker's deployment.php?apps=1): a two-minute
+     * note signed with it, saying who this request is for. Locker checks it without asking Clerdo ID.
+     */
+    private static function appNote(array $s): ?string
     {
-        if ($token === null) {
+        $key = (string)Config::get('locker.app_key', '');
+        if (strlen($key) < 32 || (string)($s['user_id'] ?? '') === '') {
+            return null;
+        }
+        $b64 = static fn(string $b): string => rtrim(strtr(base64_encode($b), '+/', '-_'), '=');
+        $payload = $b64(Json::encode([
+            'app' => 'grid',
+            'sub' => (string)$s['user_id'],
+            'name' => (string)($s['user_name'] ?? ''),
+            'email' => (string)($s['user_email'] ?? ''),
+            'avatar' => (string)($s['user_avatar'] ?? ''),
+            'plan' => Auth::plan($s),
+            'exp' => time() + 120,
+        ]));
+        return $payload . '.' . $b64(hash_hmac('sha256', $payload, $key, true));
+    }
+
+    /** @return array{status:int, body:string, headers:array<string,string>} */
+    private static function send(?string $authorization, string $method, string $path, ?string $body, array $headers, int $timeout = 60): array
+    {
+        if ($authorization === null) {
             error_log('[grid] locker: no access token in this session (signed in with an app token, or the session could not be read)');
             throw new HttpError(502, 'storage', 'Locker could not be reached');
         }
@@ -184,7 +212,7 @@ final class Locker
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_PROXY => '',
             CURLOPT_HTTPHEADER => array_merge([
-                'Authorization: Bearer ' . $token,
+                'Authorization: ' . $authorization,
                 'X-Clerdo-App: grid',
                 'Accept: application/json',
                 'User-Agent: Grid/' . GRID_VERSION,

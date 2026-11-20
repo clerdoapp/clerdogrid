@@ -39,5 +39,5 @@ return [
     'app' => ['base_url' => $base],
 
     // Where workbooks are stored; empty keeps them in Grid's own database only.
-    'locker' => ['url' => getenv('GRID_LOCKER_URL') ?: ''],
+    'locker' => ['url' => getenv('GRID_LOCKER_URL') ?: '', 'app_key' => getenv('GRID_LOCKER_APP_KEY') ?: ''],
 ];
