@@ -146,6 +146,23 @@ final class Auth
 
     // --------------------------------------------------------------- sessions
 
+    /**
+     * A new access token after another Clerdo service rejected the current one (it expired sooner than Clerdo ID
+     * said, or was revoked). Null for app (Bearer) sessions or when the session can't be renewed.
+     */
+    public static function renewAccessToken(array $s): ?string
+    {
+        if (($s['kind'] ?? 'cookie') !== 'cookie') {
+            return null;
+        }
+        $fresh = self::refreshLocked((string)$s['id'], true);
+        if ($fresh === null) {
+            return null;
+        }
+        self::$session = array_merge($fresh, ['kind' => 'cookie']);
+        return self::accessToken(self::$session);
+    }
+
     /** The user's Clerdo ID access token, for calling other Clerdo services (Locker) on their behalf. */
     public static function accessToken(array $s): ?string
     {
@@ -249,21 +266,28 @@ final class Auth
      * rotated refresh token. The second waiter re-reads the row and finds a
      * fresh access token.
      */
-    private static function refreshLocked(string $sid): ?array
+    private static function refreshLocked(string $sid, bool $force = false): ?array
     {
-        return Db::tx(static function () use ($sid): ?array {
+        return Db::tx(static function () use ($sid, $force): ?array {
             $s = Db::one('SELECT * FROM grid_sessions WHERE id = ? FOR UPDATE', [$sid]);
             if ($s === null || (int)$s['revoked'] === 1) {
                 return null;
             }
-            if (Clock::fromSql($s['access_expires']) - self::REFRESH_SKEW > time()) {
+            if (!$force && Clock::fromSql($s['access_expires']) - self::REFRESH_SKEW > time()) {
                 return $s; // someone else refreshed while we waited
             }
             if (empty($s['refresh_enc'])) {
                 Db::exec('UPDATE grid_sessions SET revoked = 1 WHERE id = ?', [$sid]);
                 return null;
             }
-            $refresh = Crypto::decrypt($s['refresh_enc']);
+            try {
+                $refresh = Crypto::decrypt($s['refresh_enc']);
+            } catch (\Throwable) {
+                // Sealed with another key (config.php was rewritten): this session can't continue; sign in again.
+                error_log('[grid] session could not be decrypted; signed out');
+                Db::exec('UPDATE grid_sessions SET revoked = 1, access_enc = NULL, refresh_enc = NULL WHERE id = ?', [$sid]);
+                return null;
+            }
             $tok = self::tokenRequest([
                 'grant_type' => 'refresh_token',
                 'refresh_token' => $refresh,

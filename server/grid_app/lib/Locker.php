@@ -139,10 +139,27 @@ final class Locker
         throw new HttpError(502, 'storage', 'Locker could not be reached');
     }
 
-    /** @return array{status:int, body:string, headers:array<string,string>} */
+    /**
+     * One request to Locker as the user. If Locker answers 401 (the access token expired early or was revoked),
+     * the session's token is renewed once and the request repeated.
+     *
+     * @return array{status:int, body:string, headers:array<string,string>}
+     */
     private static function call(array $s, string $method, string $path, ?string $body = null, array $headers = []): array
     {
-        $token = Auth::accessToken($s);
+        $r = self::send(Auth::accessToken($s), $method, $path, $body, $headers);
+        if ($r['status'] === 401) {
+            $token = Auth::renewAccessToken($s);
+            if ($token !== null) {
+                $r = self::send($token, $method, $path, $body, $headers);
+            }
+        }
+        return $r;
+    }
+
+    /** @return array{status:int, body:string, headers:array<string,string>} */
+    private static function send(?string $token, string $method, string $path, ?string $body, array $headers): array
+    {
         if ($token === null) {
             throw new HttpError(502, 'storage', 'Locker could not be reached');
         }

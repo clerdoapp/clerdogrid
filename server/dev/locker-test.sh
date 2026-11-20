@@ -143,6 +143,20 @@ req "$J1" GET "/api/projects/$P2"
 check "moved into Locker on open" "$(echo "$BODY" | jq_ project.storage)" locker
 [ "$(echo "$BODY" | jq_ project.lockerId)" != "$L2" ] && ok "a new Locker file" || bad "a new Locker file"
 
+echo "== an access token Locker rejects is renewed once"
+gridphp() { GRID_CONFIG="$ROOT/dev/config.dev.php" php -r 'require getenv("ROOT_APP")."/bootstrap.php"; '"$1"; }
+export ROOT_APP="$ROOT/grid_app"
+SID=$(php -r '$db=new PDO("sqlite:".$argv[1]); echo $db->query("SELECT id FROM grid_sessions WHERE kind=\x27cookie\x27 AND revoked=0 ORDER BY created_at DESC LIMIT 1")->fetchColumn();' "$GRID_SQLITE")
+gridphp '\Grid\Db::exec("UPDATE grid_sessions SET access_enc = ? WHERE id = ?", [\Grid\Crypto::encrypt("expired-token-0000000000000000"), "'"$SID"'"]);'
+body "$WB1" '{"name":"After expiry"}'
+mreq "$J1" "$CSRF" POST /api/projects "@$RUN/body.json"
+check "save reaches Locker after renewing" "$CODE/$(echo "$BODY" | jq_ project.storage)" "201/locker"
+
+echo "== a session sealed with another key signs out cleanly"
+gridphp '\Grid\Db::exec("UPDATE grid_sessions SET refresh_enc = ?, access_expires = ? WHERE id = ?", ["not-decryptable", "2000-01-01 00:00:00", "'"$SID"'"]);'
+req "$J1" GET /api/me
+check "401, not 500" "$CODE" 401
+
 echo
 echo "passed: $PASS   failed: $FAIL"
 [ "$FAIL" -eq 0 ]
