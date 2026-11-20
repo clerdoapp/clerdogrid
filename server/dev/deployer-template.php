@@ -7,13 +7,15 @@ declare(strict_types=1);
  *
  * Actions (all GET, all idempotent): go=1 (install files), config=1 (write config.php), locker=1|0, client=1
  * (register OAuth clients at auth.clerdo.app), migrate=1, probe=1, delete=1.
- * The payload below is a gzip'd ustar archive, base64 encoded, built by dev/package.sh.
+ * The release is a gzip'd ustar archive built by dev/package.sh: either embedded below (PAYLOAD), or, to keep this
+ * file small, downloaded by the server from the GitHub release REMOTE_URL (built by .github/workflows/cloud.yml).
  */
 
 const DEPLOY_KEY = '__DEPLOY_KEY__';
 const PAYLOAD = '__PAYLOAD__';
 const PAYLOAD_SHA256 = '__PAYLOAD_SHA256__';
 const BUILD_ID = '__BUILD_ID__';
+const REMOTE_URL = '__REMOTE_URL__';
 
 @ini_set('display_errors', '1');
 @ini_set('memory_limit', '512M');
@@ -47,7 +49,7 @@ function link_(string $action, string $label): string
 function page(string $title, string $body): never
 {
     echo '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>' . h($title) . '</title>';
-    echo '<style>body{font:15px/1.5 -apple-system,Segoe UI,Inter,sans-serif;max-width:900px;margin:40px auto;padding:0 16px;color:#111}code,pre{font:13px/1.4 ui-monospace,Menlo,monospace;background:#f3f4f8;padding:2px 5px;border-radius:4px}pre{padding:12px;overflow:auto}table{border-collapse:collapse}td,th{padding:4px 10px;border-bottom:1px solid #e3e5ec;text-align:left}.ok{color:#137333}.bad{color:#b3261e}input{font:inherit;padding:6px 8px;border:1px solid #c8ccd8;border-radius:6px;width:360px}label{display:block;margin:10px 0 2px}button{font:inherit;padding:8px 16px;border-radius:8px;border:0;background:#2347FF;color:#fff}</style>';
+    echo '<style>body{font:15px/1.5 -apple-system,Segoe UI,Inter,sans-serif;max-width:900px;margin:40px auto;padding:0 16px;color:#111}code,pre{font:13px/1.4 ui-monospace,Menlo,monospace;background:#f3f4f8;padding:2px 5px;border-radius:4px}pre{padding:12px;overflow:auto}table{border-collapse:collapse}td,th{padding:4px 10px;border-bottom:1px solid #e3e5ec;text-align:left}.ok{color:#137333}.bad{color:#b3261e}input{font:inherit;padding:6px 8px;border:1px solid #c8ccd8;border-radius:6px;width:360px}label{display:block;margin:10px 0 2px}button{font:inherit;padding:8px 16px;border-radius:8px;border:0;background:#F08C3C;color:#121417}</style>';
     echo '<h1>' . h($title) . '</h1>' . $body;
     echo '<p style="margin-top:40px"><a href="?key=' . h(DEPLOY_KEY) . '">← menu</a></p>';
     exit;
@@ -115,21 +117,85 @@ function tarEntries(string $tar): array
 
 function payloadFiles(): array
 {
-    if (PAYLOAD === '' || str_starts_with(PAYLOAD, '__')) {
+    $embedded = PAYLOAD !== '' && !str_starts_with(PAYLOAD, '__');
+    if ($embedded) {
+        $gz = base64_decode(PAYLOAD, true);
+        if ($gz === false) {
+            throw new RuntimeException('payload base64 invalid');
+        }
+        if (!hash_equals(PAYLOAD_SHA256, hash('sha256', $gz))) {
+            throw new RuntimeException('payload checksum mismatch — upload was corrupted');
+        }
+    } elseif (REMOTE_URL !== '' && !str_starts_with(REMOTE_URL, '__')) {
+        $gz = remotePayload(REMOTE_URL);
+    } else {
         throw new RuntimeException('This deployer has no payload (template). Run dev/package.sh.');
     }
-    $gz = base64_decode(PAYLOAD, true);
-    if ($gz === false) {
-        throw new RuntimeException('payload base64 invalid');
-    }
-    if (!hash_equals(PAYLOAD_SHA256, hash('sha256', $gz))) {
-        throw new RuntimeException('payload checksum mismatch — upload was corrupted');
-    }
     $tar = gzdecode($gz);
+    unset($gz);
     if ($tar === false) {
         throw new RuntimeException('payload gunzip failed');
     }
     return tarEntries($tar);
+}
+
+/** The latest release from GitHub: the archive plus its .sha256, both over HTTPS from github.com. */
+function remotePayload(string $url): string
+{
+    if (!preg_match('#^https://github\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/releases/download/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+\.tar\.gz$#', $url)) {
+        throw new RuntimeException('REMOTE_URL is not a GitHub release download');
+    }
+    $sum = trim(httpGet($url . '.sha256', 1024));
+    if (!preg_match('/^([a-f0-9]{64})\b/', $sum, $m)) {
+        throw new RuntimeException('The release checksum could not be read from GitHub. Has the Cloud build workflow finished?');
+    }
+    $gz = httpGet($url, 512 * 1024 * 1024);
+    if (!hash_equals($m[1], hash('sha256', $gz))) {
+        throw new RuntimeException('Downloaded release does not match its checksum; try again in a minute (GitHub may still be uploading it).');
+    }
+    return $gz;
+}
+
+function httpGet(string $url, int $max): string
+{
+    $tmp = tempnam(sys_get_temp_dir(), 'dl');
+    try {
+        for ($attempt = 0; $attempt < 3; $attempt++) {
+            $fh = fopen($tmp, 'wb');
+            $ch = curl_init($url);
+            curl_setopt_array($ch, [
+                CURLOPT_FILE => $fh,
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 5,
+                CURLOPT_PROTOCOLS => CURLPROTO_HTTPS,
+                CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
+                CURLOPT_CONNECTTIMEOUT => 30,
+                CURLOPT_TIMEOUT => 240,
+                CURLOPT_DNS_CACHE_TIMEOUT => 600,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_USERAGENT => 'clerdo-deployer',
+                CURLOPT_PROXY => '',
+            ] + ($attempt > 0 ? [CURLOPT_IPRESOLVE => CURL_IPRESOLVE_V4] : []));
+            $ok = curl_exec($ch);
+            $code = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            $err = curl_error($ch);
+            curl_close($ch);
+            fclose($fh);
+            if ($ok && $code === 200) {
+                if (filesize($tmp) > $max) {
+                    throw new RuntimeException('download too large');
+                }
+                return (string)file_get_contents($tmp);
+            }
+            if ($code === 404) {
+                throw new RuntimeException('Not found on GitHub: ' . $url . ' — push to main and wait for the Cloud build workflow.');
+            }
+        }
+        throw new RuntimeException('Could not download ' . $url . ' (' . ($err ?: 'HTTP ' . $code) . ')');
+    } finally {
+        @unlink($tmp);
+    }
 }
 
 function envInfo(string $PUBLIC, string $APP): string

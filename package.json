@@ -25,7 +25,7 @@
     "contributors": "node scripts/contributors.mjs"
   },
   "dependencies": {
-    "@clerdo/frame": "github:clerdoapp/clerdo-frame#v0.3.0",
+    "@clerdo/frame": "github:clerdoapp/clerdo-frame#v0.3.1",
     "@fontsource/arimo": "^5.0.0",
     "@fontsource/caladea": "^5.0.0",
     "@fontsource/carlito": "^5.0.0",

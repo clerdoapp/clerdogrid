@@ -1,0 +1,43 @@
+# Builds the online version for grid.clerdo.app and publishes it as the release "cloud-latest"
+# (grid-cloud.tar.gz + .sha256). The small deployment.php on the server downloads it from there,
+# so nothing big has to be uploaded by hand. Runs on every push to main, and by hand.
+name: Cloud build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cloud-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cloud
+      - name: Package the release
+        run: MODE=payload bash server/dev/package.sh
+      - name: Publish to the cloud-latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd server/deploy
+          echo "${GITHUB_SHA}" > grid-cloud.commit
+          gh release view cloud-latest >/dev/null 2>&1 || \
+            gh release create cloud-latest --prerelease --target "${GITHUB_SHA}" \
+              --title "Online version (grid.clerdo.app)" \
+              --notes "Built automatically from main. The server's deployment.php downloads grid-cloud.tar.gz from here; it is not a desktop release."
+          # The archive first, its checksum last: a deployer that reads the new checksum always finds the new archive.
+          gh release upload cloud-latest grid-cloud.tar.gz grid-cloud.commit --clobber
+          gh release upload cloud-latest grid-cloud.tar.gz.sha256 --clobber
