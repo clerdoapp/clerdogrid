@@ -46,6 +46,8 @@ mkdir -p "$STAGE/pkg/public_html" "$STAGE/pkg/grid_app"
 cp -R "$DIST"/. "$STAGE/pkg/public_html/"
 cp "$ROOT/public_html/.htaccess" "$ROOT/public_html/api.php" "$STAGE/pkg/public_html/"
 rm -f "$STAGE/pkg/public_html/deployment.php"
+# Which commit this is: https://<app>.clerdo.app/build.txt
+printf 'commit %s\nbuilt %s\n' "${GITHUB_SHA:-$(git -C "$ROOT/.." rev-parse HEAD 2>/dev/null || echo unknown)}" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$STAGE/pkg/public_html/build.txt"
 find "$STAGE/pkg/public_html" -name '*.map' -delete
 
 # grid_app: everything except the live config and local junk.

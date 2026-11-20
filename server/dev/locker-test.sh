@@ -132,7 +132,10 @@ mreq "$J1" "$CSRF" PUT "/api/projects/$P2" "@$RUN/body.json"
 check "save still works" "$CODE/$(echo "$BODY" | jq_ project.storage)" "200/pending"
 bash "$LOCKER_ROOT/server/dev/start.sh" >/dev/null
 req "$J1" GET "/api/projects/$P2"
-check "back in Locker on open" "$(echo "$BODY" | jq_ project.storage)" locker
+check "opens from its own copy while pending" "$CODE/$(echo "$BODY" | jq_ project.storage)" "200/pending"
+body "$WB2" "{\"baseRevision\":$(echo "$BODY" | jq_ project.revision)}"
+mreq "$J1" "$CSRF" PUT "/api/projects/$P2" "@$RUN/body.json"
+check "back in Locker with the next save" "$(echo "$BODY" | jq_ project.storage)" locker
 check "Locker caught up" "$(lka1 $L2)" 2
 
 echo "== workbooks from before Locker move in"
@@ -140,7 +143,9 @@ php -r '$db=new PDO("sqlite:".$argv[1]); $db->exec("UPDATE grid_projects SET loc
 req "$J1" GET /api/projects
 check "listed as not in Locker yet" "$(echo "$BODY" | jq_ projects.0.storage)" pending
 req "$J1" GET "/api/projects/$P2"
-check "moved into Locker on open" "$(echo "$BODY" | jq_ project.storage)" locker
+body "$WB3" "{\"baseRevision\":$(echo "$BODY" | jq_ project.revision)}"
+mreq "$J1" "$CSRF" PUT "/api/projects/$P2" "@$RUN/body.json"
+check "moved into Locker with the next save" "$(echo "$BODY" | jq_ project.storage)" locker
 [ "$(echo "$BODY" | jq_ project.lockerId)" != "$L2" ] && ok "a new Locker file" || bad "a new Locker file"
 
 echo "== an access token Locker rejects is renewed once"

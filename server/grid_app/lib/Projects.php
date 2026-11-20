@@ -489,8 +489,8 @@ final class Projects
     }
 
     /**
-     * On open: moves a workbook from before Locker into it, sends a pending save, or picks up a change
-     * made in Locker. If Locker can't be reached, Grid's own copy opens.
+     * On open: picks up a change made in Locker (a quick check). Anything not in Locker yet goes there with
+     * the next save, and if Locker can't be reached in time, Grid's own copy opens.
      */
     private static function syncFromLocker(array $s, array $row): array
     {
@@ -498,12 +498,10 @@ final class Projects
             return $row;
         }
         try {
+            // Not in Locker yet (older, or a save that couldn't reach it): it goes there with the next save.
+            // Opening never waits for Locker.
             if (empty($row['locker_id']) || (int)$row['locker_pending'] === 1) {
-                $locker = self::pushToLocker($s, $row, base64_decode(self::workbookOf($row)), $row['name']);
-                if (!isset($locker['conflict'])) {
-                    self::setLocker($row['id'], $locker);
-                }
-                return self::ownRow($s, $row['id']);
+                return $row;
             }
             $rev = Locker::rev($s, (string)$row['locker_id']);
             if ($rev === null) {

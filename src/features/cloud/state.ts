@@ -187,7 +187,7 @@ export const openCloud = async (store: GridStore, id: string, ask = true): Promi
     return true;
   } catch (e) {
     if (e instanceof CloudError && e.status === 401) { signIn(); return false; }
-    store.notify(T('The cloud workbook could not be opened.'));
+    store.notify(`${T('The cloud workbook could not be opened.')} ${e instanceof CloudError ? `(${e.status ? e.status + ' ' : ''}${e.message})` : e instanceof Error ? `(${e.message})` : ''}`);
     return false;
   }
 };
