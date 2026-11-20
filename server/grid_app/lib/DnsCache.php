@@ -3,9 +3,10 @@ declare(strict_types=1);
 
 namespace Grid;
 /**
- * Remembers the addresses of Clerdo's own servers (*.clerdo.app). This host's DNS is often slow, and a lookup
- * that times out made sign-in and app-to-app calls run past PHP's time limit (a 500). After one good lookup
- * the address is reused for a day; if it stops answering, the caller forgets it and looks it up again.
+ * Addresses of Clerdo's own servers (*.clerdo.app). This host's DNS is often slow, and a lookup that times out
+ * made sign-in and app-to-app calls fail or run past PHP's time limit (a 500). The Clerdo sites share this
+ * server, so a call first goes to this server's own address; an address that worked is remembered for a day.
+ * If it doesn't answer (or its certificate doesn't match), the caller unpins and does a normal lookup.
  */
 final class DnsCache
 {
@@ -18,7 +19,7 @@ final class DnsCache
         if ($hp === null) {
             return [];
         }
-        $ip = self::load()[$hp[0]] ?? null;
+        $ip = self::load()[$hp[0]] ?? self::ownAddress();
         return is_string($ip) ? [CURLOPT_RESOLVE => [$hp[0] . ':' . $hp[1] . ':' . (str_contains($ip, ':') ? '[' . $ip . ']' : $ip)]] : [];
     }
 
@@ -45,6 +46,13 @@ final class DnsCache
             $all[$hp[0]] = $ip;
             self::save($all);
         }
+    }
+
+    /** This server's public address, as the web server reports it. */
+    private static function ownAddress(): ?string
+    {
+        $ip = (string)($_SERVER['SERVER_ADDR'] ?? '');
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) !== false ? $ip : null;
     }
 
     /** [host, port] for https/http URLs on clerdo.app, else null. */

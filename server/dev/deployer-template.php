@@ -606,6 +606,19 @@ try {
                 curl_close($ch);
                 $b .= ($code > 0 ? '<li class=ok>' : '<li class=bad>') . 'HEAD <code>' . h($u) . '</code> → ' . ($code ?: h($err)) . '</li>';
             }
+            // The apps reach other Clerdo sites through this server's own address first (slow DNS on the host).
+            $own = (string)($_SERVER['SERVER_ADDR'] ?? '');
+            foreach (array_unique([(string)Grid\Config::get('auth.authorize_url'), 'https://locker.clerdo.app/api/me']) as $u) {
+                $host = (string)parse_url($u, PHP_URL_HOST);
+                $ch = curl_init($u);
+                curl_setopt_array($ch, [CURLOPT_NOBODY => true, CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 6, CURLOPT_FOLLOWLOCATION => false,
+                    CURLOPT_RESOLVE => [$host . ':443:' . (str_contains($own, ':') ? '[' . $own . ']' : $own)]]);
+                curl_exec($ch);
+                $code = curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+                $err = curl_error($ch);
+                curl_close($ch);
+                $b .= ($code > 0 ? '<li class=ok>' : '<li class=bad>') . 'Via this server (' . h($own) . ') <code>' . h($u) . '</code> → ' . ($code ?: h($err)) . '</li>';
+            }
         } catch (Throwable $e) {
             $b .= '<li class=bad>' . h($e->getMessage()) . '</li>';
         }
