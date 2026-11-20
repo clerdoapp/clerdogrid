@@ -654,12 +654,24 @@ try {
         page('Grid — Locker storage', $b . '<p>Next: ' . link_('migrate=1', 'run migrations') . ' · ' . link_('delete=1', 'delete this deployer') . '</p>');
     }
 
+    // ------------------------------------------------------------------ logs=1
+    // The last server errors (grid_app/logs/error.log), with anything that looks like a token hidden.
+    if (isset($_GET['logs'])) {
+        $f = $APP . '/logs/error.log';
+        $lines = is_file($f) ? array_slice(file($f, FILE_IGNORE_NEW_LINES) ?: [], -80) : [];
+        $lines = array_map(static fn(string $l): string => (string)preg_replace('/[A-Za-z0-9_\-.~+\/=]{40,}/', '…', $l), $lines);
+        page('Grid — server errors', $lines === []
+            ? '<p class=ok>No errors logged yet' . (is_file($f) ? '' : ' (the log file appears after the first error)') . '.</p>'
+            : '<p>Newest last.</p><pre>' . h(implode("\n", $lines)) . '</pre>');
+    }
+
     // ------------------------------------------------------------------ menu
     $b = envInfo($PUBLIC, $APP);
     $b .= '<h2>Actions</h2><ol>';
     $b .= '<li>' . link_('go=1', 'Install / update files') . ' — writes public_html/* and ../grid_app/* from the embedded payload (keeps live config.php, prunes old assets).</li>';
     $b .= '<li>' . link_('config=1', 'Configure') . ' — write ../grid_app/config.php (DB prefilled from Frame/Zoetra when readable) and test the DB.</li>';
     $b .= '<li>' . link_('client=1', 'Register OAuth clients') . ' — adds grid-web and grid-ios to auth.clerdo.app Clients.php.</li>';
+    $b .= '<li>' . link_('logs=1', 'Server errors') . ' — the last errors Grid logged.</li>';
     $b .= '<li>' . link_('migrate=1', 'Migrate') . ' — create/upgrade grid_* tables.</li>';
     $locker = (string)((loadConfig($APP) ?: [])['locker']['url'] ?? '');
     $b .= '<li>' . ($locker === '' ? link_('locker=1', 'Save workbooks in Locker') . ' — currently off.' : link_('locker=0', 'Stop saving in Locker') . ' — currently on (' . h($locker) . ').') . '</li>';

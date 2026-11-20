@@ -18,6 +18,11 @@ if (!defined('GRID_MEMORY_SET')) {
     @ini_set('log_errors', '1');
     @ini_set('html_errors', '0');
     @ini_set('zend.exception_ignore_args', '1');
+    // Errors go to grid_app/logs/error.log (outside public_html), so deployment.php?logs=1 can show them.
+    $logDir = __DIR__ . '/logs';
+    if (is_dir($logDir) || @mkdir($logDir, 0700)) {
+        @ini_set('error_log', $logDir . '/error.log');
+    }
 }
 
 error_reporting(E_ALL);

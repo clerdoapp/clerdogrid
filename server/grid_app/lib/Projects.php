@@ -470,6 +470,7 @@ final class Projects
             if (!self::isLockerTrouble($e)) {
                 throw $e;
             }
+            error_log('[grid] locker: save kept here and sent later (' . $e->getMessage() . ')');
             return ['locker_pending' => 1];
         }
     }

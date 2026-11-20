@@ -161,6 +161,7 @@ final class Locker
     private static function send(?string $token, string $method, string $path, ?string $body, array $headers): array
     {
         if ($token === null) {
+            error_log('[grid] locker: no access token in this session (signed in with an app token, or the session could not be read)');
             throw new HttpError(502, 'storage', 'Locker could not be reached');
         }
         static $ch = null;
