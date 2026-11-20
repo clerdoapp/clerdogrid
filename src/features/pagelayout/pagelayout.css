@@ -59,7 +59,7 @@
 .pb-auto { stroke: #2f5fd6; stroke-width: 2.5; stroke-dasharray: 7 4; }
 .pb-man { stroke: #2f5fd6; stroke-width: 3; }
 .pb-drag { stroke: #2f5fd6; stroke-width: 2; opacity: .7; }
-.pb-mark { fill: rgba(110, 120, 130, .38); font-family: 'Hanken Grotesk', system-ui, sans-serif; font-weight: 700; }
+.pb-mark { fill: rgba(110, 120, 130, .38); font-family: 'Figtree', system-ui, sans-serif; font-weight: 700; }
 .pb-grip { position: absolute; pointer-events: auto; touch-action: none; }
 .pb-grip.h { height: 8px; cursor: row-resize; }
 .pb-grip.v { width: 8px; cursor: col-resize; }

@@ -1,7 +1,9 @@
 import { createRoot } from 'react-dom/client';
-import '@fontsource/hanken-grotesk/400.css';
-import '@fontsource/hanken-grotesk/500.css';
-import '@fontsource/hanken-grotesk/600.css';
+import '@fontsource/figtree/400.css';
+import '@fontsource/figtree/500.css';
+import '@fontsource/figtree/600.css';
+import '@fontsource/outfit/600.css';
+import '@clerdo/frame/style.css';
 import './ui/fonts-bundled.css';
 import './ui/app.css';
 import { App } from './ui/App';

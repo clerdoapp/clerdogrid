@@ -1,47 +1,36 @@
 :root {
-  --bg: #edf1ee;
-  --panel: #fbfcfb;
-  --panel-2: #f0f4f1;
-  --line: #d9e2dc;
-  --ink: #142019;
-  --muted: #5b6a61;
-  --accent: #0c7a4b;
-  --accent-2: #12a565;
-  --accent-soft: #e1f3e9;
+  /* Grid's own surfaces, on the Clerdo brand: the frame supplies --bg, --line, --ink, --accent, --accent-soft. */
+  --panel: var(--surface);
+  --panel-2: var(--surface-sunken);
+  --muted: var(--ink-muted);
+  --accent-2: var(--orange);
   --on-accent: #fff;
-  --sel: rgba(18, 165, 101, 0.13);
-  --rail: #0b2a1e;
-  --rail-ink: #a7c8b7;
-  --rail-on: rgba(52, 194, 127, 0.22);
+  --sel: rgba(240, 140, 60, 0.14);
+  --rail: var(--surface-sunken);
+  --rail-ink: var(--ink-muted);
+  --rail-on: var(--accent-soft);
   --sheet: #ffffff;
-  --gridline: #dfe6e1;
-  --hdr: #f2f6f3;
-  --hdr-ink: #56655c;
-  --hdr-sel: #d8efe2;
-  --hdr-line: #d0dad3;
-  --cell-ink: #111111;
-  --frozen: #8fa597;
-  --shadow: 0 12px 40px rgba(8, 30, 20, .2), 0 1px 3px rgba(8, 30, 20, .14);
+  --gridline: #e6e2da;
+  --hdr: #f3f0ea;
+  --hdr-ink: #5b5f66;
+  --hdr-sel: #fbe3cf;
+  --hdr-line: #ddd8ce;
+  --cell-ink: #121417;
+  --frozen: #a9a39a;
+  --shadow: 0 12px 40px rgba(18, 20, 23, .18), 0 1px 3px rgba(18, 20, 23, .12);
   --is-dark: 0;
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme='light']) {
-    --bg: #0f1713; --panel: #16201b; --panel-2: #1e2a24; --line: #29372f; --ink: #e5efe9; --muted: #91a398; --accent: #34c27f; --accent-2: #34c27f; --accent-soft: #1b3a2b; --on-accent: #06200f;
-    --rail: #09110d; --rail-ink: #8fab9c; --rail-on: rgba(52, 194, 127, 0.2); --sheet: #131c17; --gridline: #233029; --hdr: #19231e; --hdr-ink: #91a398; --hdr-sel: #1e3f2f; --hdr-line: #2b3931;
-    --cell-ink: #e5efe9; --frozen: #4d6256; --sel: rgba(52, 194, 127, 0.18); --is-dark: 1; color-scheme: dark;
-  }
-}
 :root[data-theme='dark'] {
-  --bg: #0f1713; --panel: #16201b; --panel-2: #1e2a24; --line: #29372f; --ink: #e5efe9; --muted: #91a398; --accent: #34c27f; --accent-2: #34c27f; --accent-soft: #1b3a2b; --on-accent: #06200f;
-  --rail: #09110d; --rail-ink: #8fab9c; --rail-on: rgba(52, 194, 127, 0.2); --sheet: #131c17; --gridline: #233029; --hdr: #19231e; --hdr-ink: #91a398; --hdr-sel: #1e3f2f; --hdr-line: #2b3931;
-  --cell-ink: #e5efe9; --frozen: #4d6256; --sel: rgba(52, 194, 127, 0.18); --is-dark: 1; color-scheme: dark;
+  --on-accent: #121417; --sel: rgba(245, 160, 90, 0.18);
+  --sheet: #1b1e22; --gridline: #2c3036; --hdr: #202328; --hdr-ink: #a9adb4; --hdr-sel: #3a2615; --hdr-line: #33373d;
+  --cell-ink: #f7f5f0; --frozen: #6b7078; --is-dark: 1; color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; margin: 0; }
 html, body { overscroll-behavior: none; }
-body { padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0); font: 14px/1.4 'Hanken Grotesk', system-ui, sans-serif; color: var(--ink); background: var(--rail); overflow: hidden; -webkit-text-size-adjust: 100%; }
+body { padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0); font: 14px/1.4 var(--font-sans), system-ui, sans-serif; color: var(--ink); background: var(--bg); overflow: hidden; -webkit-text-size-adjust: 100%; }
 button, input, select, textarea { font: inherit; color: inherit; }
 button { cursor: pointer; background: none; border: 0; }
 button:disabled { opacity: .4; cursor: default; }
@@ -53,22 +42,18 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); }
 .small { font-size: 12px; }
 .pad { padding: 10px; }
 .grow { flex: 1; }
-kbd { font: 11px 'Hanken Grotesk', sans-serif; color: var(--muted); white-space: nowrap; }
+kbd { font: 11px var(--font-sans), sans-serif; color: var(--muted); white-space: nowrap; }
 
-.app { display: flex; flex-direction: column; height: 100%; background: var(--bg); }
+.app { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--bg); }
+.cl-frame__main:has(> .app) { overflow: hidden; display: flex; flex-direction: column; }
+.cl-frame__main > .app { flex: 1; }
+.topitem { display: inline-flex; align-items: center; }
+.cl-topbar .ico { width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: var(--radius-md); color: var(--ink); }
+.cl-topbar .ico:hover:not(:disabled) { background: var(--surface-sunken); }
 .work { flex: 1; display: flex; min-height: 0; }
 .stage { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--sheet); }
 
 /* Top bar */
-.topbar { height: 48px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--panel); border-bottom: 1px solid var(--line); box-shadow: inset 0 3px 0 var(--accent-2); }
-.wordmark { font-weight: 500; letter-spacing: -.01em; font-size: 16px; white-space: nowrap; }
-.wordmark b { font-weight: 700; color: var(--accent); }
-.docname { border: 1px solid transparent; background: transparent; border-radius: 6px; padding: 4px 8px; width: 220px; font-weight: 500; }
-.docname:hover, .docname:focus { border-color: var(--line); background: var(--panel-2); }
-.savestate { color: var(--muted); font-size: 12px; white-space: nowrap; }
-.cmdsearch { display: flex; align-items: center; gap: 8px; width: min(380px, 34vw); height: 32px; padding: 0 10px; border-radius: 8px; background: var(--panel-2); color: var(--muted); font-size: 13px; overflow: hidden; white-space: nowrap; }
-.cmdsearch span { overflow: hidden; text-overflow: ellipsis; }
-.cmdsearch kbd { margin-inline-start: auto; }
 .ico { width: 30px; height: 30px; display: inline-grid; place-items: center; border-radius: 7px; flex: none; }
 .ico.sm { width: 26px; height: 26px; }
 .ico:hover:not(:disabled) { background: var(--panel-2); }
@@ -78,8 +63,8 @@ kbd { font: 11px 'Hanken Grotesk', sans-serif; color: var(--muted); white-space:
 .rail { width: 62px; flex: none; background: var(--rail); display: flex; flex-direction: column; padding: 8px 6px; gap: 2px; overflow: auto; }
 .rail button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 2px 7px; border-radius: 6px; color: var(--rail-ink); font-size: 11px; font-weight: 500; }
 .rail button span { text-align: center; line-height: 1.15; white-space: nowrap; }
-.rail button:hover { background: rgba(255,255,255,.07); color: #fff; }
-.rail button.on { background: var(--rail-on); color: #fff; box-shadow: inset 3px 0 0 var(--accent-2); }
+.rail button:hover { background: var(--line); color: var(--ink); }
+.rail button.on { background: var(--rail-on); color: var(--ink); box-shadow: inset 3px 0 0 var(--accent-2); }
 .toolpanel { width: 256px; flex: none; background: var(--panel); display: flex; flex-direction: column; min-height: 0; border-inline-end: 1px solid var(--line); }
 .phead { display: flex; align-items: center; justify-content: space-between; padding-block: 10px 6px; padding-inline: 14px 10px; }
 .phead h2 { font-size: 15px; font-weight: 600; }
@@ -225,15 +210,12 @@ kbd { font: 11px 'Hanken Grotesk', sans-serif; color: var(--muted); white-space:
   .menu button { padding: 10px 12px; }
 }
 @media (max-width: 900px) {
-  .cmdsearch span, .cmdsearch kbd, .savestate { display: none; }
-  .cmdsearch { width: auto; }
-  .docname { width: 130px; }
-  .toolpanel { position: absolute; z-index: 40; top: 48px; bottom: 28px; inset-inline-start: 62px; box-shadow: var(--shadow); }
+  .toolpanel { position: absolute; z-index: 40; top: var(--frame-topbar); bottom: 28px; inset-inline-start: 62px; box-shadow: var(--shadow); }
   .namebox { width: 96px; }
   .selsize, .stats span:nth-child(n+3) { display: none; }
 }
 @media print {
-  .topbar, .rail, .toolpanel, .formulabar, .sheettabs, .status { display: none; }
+  .cl-topbar, .rail, .toolpanel, .formulabar, .sheettabs, .status { display: none; }
 }
 
 /* Right-to-left interface: the layout mirrors through flex and logical properties; icons that point a way flip too. */
@@ -241,3 +223,10 @@ kbd { font: 11px 'Hanken Grotesk', sans-serif; color: var(--muted); white-space:
 [dir='rtl'] :is(.lucide-panel-left-close, .lucide-panel-right, .lucide-chevron-left, .lucide-chevron-right, .lucide-arrow-left, .lucide-arrow-right, .lucide-undo-2, .lucide-redo-2, .lucide-send, .lucide-log-out, .lucide-external-link) { transform: scaleX(-1); }
 /* Code keeps its own direction. */
 [dir='rtl'] :is(code, kbd, .mono) { direction: ltr; unicode-bidi: isolate; }
+
+/* Grid keeps its side rail on phones (its tool panels open over the sheet), so the frame's bottom-bar layout is off here. */
+@media (max-width: 900px) {
+  .cl-frame__body:has(> .rail) { flex-direction: row; }
+  .cl-topbar .ico { display: none; }
+  .cl-topbar .topitem { display: none; }
+}

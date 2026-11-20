@@ -672,7 +672,7 @@ export class SheetRenderer {
     const fullRow = (r: number) => sel.some((x) => x.c1 === 0 && x.c2 === MAX_COLS - 1 && r >= x.r1 && r <= x.r2);
     const colSel = (c: number) => sel.some((r) => c >= r.c1 && c <= r.c2);
     const rowSel = (r: number) => sel.some((x) => r >= x.r1 && r <= x.r2);
-    ctx.font = `400 ${(11 * zoom).toFixed(1)}px "Hanken Grotesk", system-ui, sans-serif`;
+    ctx.font = `400 ${(11 * zoom).toFixed(1)}px "Figtree", system-ui, sans-serif`;
     ctx.textBaseline = 'middle';
     const ow = vp.outlineW ?? 0, oh = vp.outlineH ?? 0;
     // Column header strip.

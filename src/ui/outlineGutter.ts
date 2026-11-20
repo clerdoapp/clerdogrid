@@ -87,7 +87,7 @@ export const drawOutline = (ctx: CanvasRenderingContext2D, store: GridStore, vp:
   if (!ow && !oh) return;
   const s = store.sheet;
   ctx.save();
-  ctx.font = `600 ${(9 * vp.zoom).toFixed(1)}px "Hanken Grotesk", system-ui, sans-serif`;
+  ctx.font = `600 ${(9 * vp.zoom).toFixed(1)}px "Figtree", system-ui, sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = theme.header;
   if (ow) ctx.fillRect(0, 0, ow, vp.height);

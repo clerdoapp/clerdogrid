@@ -156,7 +156,7 @@ export const chartPng = async (svg: SVGSVGElement, scale = 2): Promise<Blob> => 
   copy.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
   copy.setAttribute('width', String(w));
   copy.setAttribute('height', String(h));
-  copy.setAttribute('style', `font-family: 'Hanken Grotesk', system-ui, sans-serif; background: ${getComputedStyle(svg).getPropertyValue('--chart-bg').trim() || '#ffffff'}`);
+  copy.setAttribute('style', `font-family: 'Figtree', system-ui, sans-serif; background: ${getComputedStyle(svg).getPropertyValue('--chart-bg').trim() || '#ffffff'}`);
   const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
   bg.setAttribute('width', '100%'); bg.setAttribute('height', '100%');
   bg.setAttribute('fill', getComputedStyle(svg).getPropertyValue('--chart-bg').trim() || '#ffffff');

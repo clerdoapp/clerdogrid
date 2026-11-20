@@ -166,7 +166,7 @@ const download = (name: string, blob: Blob): void => {
 
 export const workbookBytes = (store: GridStore): Uint8Array => {
   store.sheet.view.selection = store.range;
-  store.wb.props = { ...store.wb.props, modified: new Date().toISOString(), creator: store.wb.props?.creator ?? 'ClerdoGrid' };
+  store.wb.props = { ...store.wb.props, modified: new Date().toISOString(), creator: store.wb.props?.creator ?? 'Clerdo Grid' };
   const undo = beforeSaveHooks.map((h) => h(store));
   try { return writeXlsx(store.wb); } finally { for (const u of undo.reverse()) u?.(); }
 };
@@ -178,7 +178,7 @@ export const bytesFor = (store: GridStore, format: string): Uint8Array => {
     return store.file.password ? encryptWorkbook(data, store.file.password) : data;
   }
   store.sheet.view.selection = store.range;
-  store.wb.props = { ...store.wb.props, modified: new Date().toISOString(), creator: store.wb.props?.creator ?? 'ClerdoGrid' };
+  store.wb.props = { ...store.wb.props, modified: new Date().toISOString(), creator: store.wb.props?.creator ?? 'Clerdo Grid' };
   const undo = beforeSaveHooks.map((h) => h(store));
   try {
     if (format === 'xlsb') { const data = writeXlsb(store.wb); return store.file.password ? encryptWorkbook(data, store.file.password) : data; }

@@ -61,3 +61,15 @@ export interface MenuProvider { id: string; items: (store: GridStore, kind: 'cel
 const menuProviders: MenuProvider[] = [];
 export const registerMenuProvider = (p: MenuProvider): void => { if (!menuProviders.some((x) => x.id === p.id)) menuProviders.push(p); };
 export const menuProviderItems = (store: GridStore, kind: 'cell' | 'row' | 'col'): MenuItem[] => menuProviders.flatMap((p) => { const it = p.items(store, kind); return it?.length ? [...it, 'sep' as const] : []; });
+
+/**
+ * Who is signed in, for the account menu in the top bar. Only the online build (grid.clerdo.app) registers one;
+ * the desktop and offline builds have no account.
+ */
+export interface AccountSource { useAccount: () => { user: import('@clerdo/frame').ClerdoUser | null; signIn: () => void; signOut: () => void } }
+const noAccount: AccountSource = { useAccount: () => ({ user: null, signIn: () => undefined, signOut: () => undefined }) };
+let accountSource: AccountSource = noAccount;
+let accountRegistered = false;
+export const registerAccountSource = (a: AccountSource): void => { accountSource = a; accountRegistered = true; };
+export const useAccountSource = () => accountSource.useAccount();
+export const hasAccountSource = (): boolean => accountRegistered;

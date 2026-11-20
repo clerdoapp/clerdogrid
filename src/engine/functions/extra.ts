@@ -156,7 +156,7 @@ const alias = (name: string, target: string): FunctionDef => ({
 });
 
 const blocked = (name: string, min: number, max: number): FunctionDef => ({
-  name, min, max, fn: () => new CellError('#BLOCKED!', 'This function runs outside code, which ClerdoGrid never allows.'),
+  name, min, max, fn: () => new CellError('#BLOCKED!', 'This function runs outside code, which Grid never allows.'),
 });
 
 export const defs: FunctionDef[] = [

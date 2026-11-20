@@ -1,6 +1,6 @@
 {
-  "name": "ClerdoGrid",
-  "short_name": "ClerdoGrid",
+  "name": "Clerdo Grid",
+  "short_name": "Grid",
   "description": "Free spreadsheet app by Clerdo",
   "start_url": "./",
   "scope": "./",

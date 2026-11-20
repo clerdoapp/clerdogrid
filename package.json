@@ -25,10 +25,12 @@
     "contributors": "node scripts/contributors.mjs"
   },
   "dependencies": {
+    "@clerdo/frame": "github:clerdoapp/clerdo-frame#v0.3.0",
     "@fontsource/arimo": "^5.0.0",
     "@fontsource/caladea": "^5.0.0",
     "@fontsource/carlito": "^5.0.0",
     "@fontsource/cousine": "^5.0.0",
+    "@fontsource/figtree": "^5.3.0",
     "@fontsource/hanken-grotesk": "^5.0.0",
     "@fontsource/inter": "^5.3.0",
     "@fontsource/lato": "^5.3.0",
@@ -39,6 +41,7 @@
     "@fontsource/noto-sans-kr": "^5.3.1",
     "@fontsource/noto-sans-sc": "^5.3.1",
     "@fontsource/open-sans": "^5.3.0",
+    "@fontsource/outfit": "^5.3.0",
     "@fontsource/roboto": "^5.3.0",
     "@fontsource/roboto-mono": "^5.3.0",
     "@fontsource/tinos": "^5.0.0",
